@@ -7,6 +7,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -92,6 +95,160 @@ const {
   useEffect,
   useRef
 } = React;
+
+/* -----------------------------------------------------------------------
+   FIREBASE CONFIG - replace these values with your own project config
+   from Firebase Console > Project Settings > Your apps > SDK setup
+----------------------------------------------------------------------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyDG4T5RMB9dDGqyRZuqz7L_W_p9rsDDvkc",
+  authDomain: "bizcrm-44258.firebaseapp.com",
+  databaseURL: "https://bizcrm-44258-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "bizcrm-44258",
+  storageBucket: "bizcrm-44258.firebasestorage.app",
+  messagingSenderId: "99400245451",
+  appId: "1:99400245451:web:c7fdbb79f7f2a82192fb4e",
+  measurementId: "G-PDF6ZBQGBH"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+/* Firebase init - only runs once */
+let _db = null;
+let _fbReady = false;
+try {
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  _db = firebase.database();
+  _fbReady = true;
+} catch(e) {
+  console.warn("Firebase init failed - running in local-only mode.", e.message);
+}
+
+/* Paths in Realtime Database */
+const FB = {
+  clients:      "bizcrm/clients",
+  leads:        "bizcrm/leads",
+  products:     "bizcrm/products",
+  users:        "bizcrm/users",
+  quotations:   "bizcrm/quotations",
+  salesTargets: "bizcrm/salesTargets"
+};
+
+/*
+  useFirebaseCollection(path, defaultValue, seedData)
+  - Returns [data, setData, status]
+  - On first load: if Firebase is empty AND seedData is provided, writes the
+    seed data so sample records appear on first use.
+  - status: "loading" | "ready" | "offline"
+*/
+function useFirebaseCollection(path, defaultValue, seedData) {
+  const [data, setDataLocal] = useState(defaultValue);
+  const [status, setStatus] = useState(_fbReady ? "loading" : "offline");
+  const seededRef = useRef(false);
+
+  useEffect(function() {
+    if (!_fbReady || !_db) { setStatus("offline"); return; }
+    const ref = _db.ref(path);
+    const handler = ref.on("value", function(snap) {
+      const val = snap.val();
+      if (val === null) {
+        /* Nothing in DB yet - seed with sample data if provided */
+        if (seedData && !seededRef.current) {
+          seededRef.current = true;
+          const obj = {};
+          seedData.forEach(function(item) { obj[item.id] = item; });
+          ref.set(obj);
+        } else {
+          setDataLocal(defaultValue);
+        }
+      } else {
+        const arr = Object.values(val);
+        setDataLocal(arr);
+      }
+      setStatus("ready");
+    }, function(err) {
+      console.warn("Firebase read error on", path, err.message);
+      setStatus("offline");
+    });
+    return function() { ref.off("value", handler); };
+  }, []); // eslint-disable-line
+
+  /* Wrap setter so writes also go to Firebase */
+  function setData(updater) {
+    setDataLocal(function(prev) {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (_fbReady && _db) {
+        const obj = {};
+        next.forEach(function(item) { obj[item.id] = item; });
+        _db.ref(path).set(obj).catch(function(e) {
+          console.warn("Firebase write error on", path, e.message);
+        });
+      }
+      return next;
+    });
+  }
+
+  return [data, setData, status];
+}
+
+/* Single key/value (for salesTargets which is a plain object, not an array) */
+function useFirebaseValue(path, defaultValue) {
+  const [data, setDataLocal] = useState(defaultValue);
+  const [status, setStatus] = useState(_fbReady ? "loading" : "offline");
+
+  useEffect(function() {
+    if (!_fbReady || !_db) { setStatus("offline"); return; }
+    const ref = _db.ref(path);
+    const handler = ref.on("value", function(snap) {
+      const val = snap.val();
+      setDataLocal(val !== null ? val : defaultValue);
+      setStatus("ready");
+    }, function(err) {
+      console.warn("Firebase read error on", path, err.message);
+      setStatus("offline");
+    });
+    return function() { ref.off("value", handler); };
+  }, []); // eslint-disable-line
+
+  function setData(updater) {
+    setDataLocal(function(prev) {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (_fbReady && _db) {
+        _db.ref(path).set(next).catch(function(e) {
+          console.warn("Firebase write error on", path, e.message);
+        });
+      }
+      return next;
+    });
+  }
+
+  return [data, setData, status];
+}
+
+/* Small connection-status badge component */
+function FbStatusBadge(_ref) {
+  var statuses = _ref.statuses;
+  var hasOffline = statuses.some(function(s) { return s === "offline"; });
+  var hasLoading = statuses.some(function(s) { return s === "loading"; });
+  var label = hasOffline ? "Offline" : hasLoading ? "Syncing..." : "Firebase";
+  var clr   = hasOffline ? "#f87171" : hasLoading ? "#fbbf24" : "#4ade80";
+  var bg    = hasOffline ? "#1a0a0a" : hasLoading ? "#1a1400" : "#052e16";
+  var border= hasOffline ? "#7f1d1d" : hasLoading ? "#78350f" : "#15803d";
+  return React.createElement("span", {
+    title: hasOffline
+      ? "Firebase unreachable - changes are local only. Check FIREBASE_CONFIG."
+      : hasLoading ? "Syncing with Firebase..." : "Connected to Firebase Realtime Database",
+    style: {
+      fontSize: 10, fontWeight: 600, padding: "2px 8px",
+      background: bg, color: clr, border: "1px solid " + border,
+      borderRadius: 5, letterSpacing: ".04em", whiteSpace: "nowrap",
+      cursor: "default", userSelect: "none"
+    }
+  }, (hasOffline ? "[!] " : hasLoading ? "[~] " : "[+] ") + label);
+}
+
 const ROLES = ["Admin", "Manager", "Viewer"];
 const PERMS = {
   Admin: {
@@ -5427,69 +5584,6 @@ function SalesTargetWidget({
     }, "\u20B1", wonPipe.toLocaleString()))));
   })));
 }
-function generateAlgorithmicInsights(leads,clients,totRev,totOutstanding){
-  var wonLeads=leads.filter(function(l){return l.status==="Won";});
-  var activeLeads=leads.filter(function(l){return l.status!=="Won"&&l.status!=="Churned";});
-  var convRate=leads.length>0?Math.round(wonLeads.length/leads.length*100):0;
-  var totalProj=activeLeads.reduce(function(s,l){return s+(l.projectedSales||0);},0);
-  var srcMap={};
-  leads.forEach(function(l){if(l.leadSource){srcMap[l.leadSource]=(srcMap[l.leadSource]||0)+1;}});
-  var topSrc=Object.entries(srcMap).sort(function(a,b){return b[1]-a[1];})[0];
-  var stageMap={};
-  activeLeads.forEach(function(l){stageMap[l.stage]=(stageMap[l.stage]||0)+1;});
-  var topStage=Object.entries(stageMap).sort(function(a,b){return b[1]-a[1];})[0];
-  var STAGE_LABELS={"new":"New","leadqualification":"Lead Qualification","discoverydemo":"Discovery & Demo","poc":"Proof of Concept","commercial":"Commercial Proposal","closing":"Closing & Contract","handoff":"Handoff"};
-  var activeClients=clients.filter(function(c){return c.status==="Active";});
-  var inactiveClients=clients.filter(function(c){return c.status==="Inactive";});
-  var totalContract=clients.reduce(function(s,c){return s+(c.contract||0);},0);
-  var totalInv=clients.reduce(function(s,c){return (c.invoices||[]).reduce(function(a,i){return a+(i.amount||0);},s);},0);
-  var collRate=totalInv>0?Math.round(totRev/totalInv*100):0;
-  var outstanding=totOutstanding||0;
-  // Leads insight
-  var leadsText="";
-  if(leads.length===0){leadsText="No leads in the system yet. Start adding leads to build your pipeline.";}
-  else{
-    leadsText="Pipeline has "+leads.length+" total leads ("+activeLeads.length+" active, "+wonLeads.length+" won) with a "+convRate+"% win rate. ";
-    leadsText+="Active pipeline is valued at PHP "+totalProj.toLocaleString()+". ";
-    if(topStage){leadsText+="Most leads are stuck at the "+( STAGE_LABELS[topStage[0]]||topStage[0])+" stage ("+topStage[1]+" leads) — prioritize moving these forward.";}
-    if(topSrc){leadsText+=" Best lead source is "+topSrc[0]+" with "+topSrc[1]+" leads — consider doubling down on this channel.";}
-  }
-  // Clients insight
-  var clientsText="";
-  if(clients.length===0){clientsText="No clients on record yet. Convert your pipeline leads to build the client base.";}
-  else{
-    clientsText="Client base has "+clients.length+" accounts ("+activeClients.length+" active, "+inactiveClients.length+" inactive). ";
-    clientsText+="Total contract value is PHP "+totalContract.toLocaleString()+". ";
-    if(inactiveClients.length>0){clientsText+=inactiveClients.length+" inactive client"+(inactiveClients.length>1?"s":"")+" may need re-engagement to recover revenue.";}
-    else{clientsText+="All clients are currently active — focus on upsell and renewal opportunities.";}
-  }
-  // Collections insight
-  var collectText="";
-  if(totalInv===0){collectText="No invoices recorded yet. Begin invoicing clients to track collections performance.";}
-  else{
-    collectText="Collection rate stands at "+collRate+"% — PHP "+totRev.toLocaleString()+" collected out of PHP "+totalInv.toLocaleString()+" invoiced. ";
-    if(outstanding>0){collectText+="Outstanding receivables of PHP "+outstanding.toLocaleString()+" require immediate follow-up. ";}
-    if(collRate>=90){collectText+="Excellent collections performance — maintain proactive billing practices.";}
-    else if(collRate>=70){collectText+="Collections are moderate. Prioritize follow-ups on overdue accounts to improve cash flow.";}
-    else{collectText+="Collections are below target. Escalate overdue invoices and review payment terms with clients.";}
-  }
-  // Overall
-  var score=0;
-  if(convRate>=30)score++;
-  if(collRate>=80)score++;
-  if(activeClients.length>0&&inactiveClients.length/Math.max(clients.length,1)<0.3)score++;
-  if(activeLeads.length>0)score++;
-  var health=score>=4?"Strong":score>=3?"Good":score>=2?"Fair":"Needs Attention";
-  var priority="";
-  if(collRate<70&&totalInv>0){priority="Top priority: recover PHP "+outstanding.toLocaleString()+" in outstanding receivables.";}
-  else if(convRate<20&&leads.length>5){priority="Top priority: improve win rate — only "+convRate+"% of leads are converting to deals.";}
-  else if(inactiveClients.length>activeClients.length){priority="Top priority: re-engage inactive clients before pursuing new leads.";}
-  else if(activeLeads.length>0&&topStage){priority="Top priority: unblock "+topStage[1]+" leads at the "+(STAGE_LABELS[topStage[0]]||topStage[0])+" stage.";}
-  else{priority="Business is on track. Focus on growing the pipeline and maintaining client relationships.";}
-  var overallText="Overall business health is "+health+" ("+score+"/4). "+priority;
-  return {leads:leadsText,clients:clientsText,collections:collectText,overall:overallText};
-}
-
 function AIInsights({
   leads,
   clients,
@@ -5503,46 +5597,283 @@ function AIInsights({
   totOutstanding
 }) {
   const [insight, setInsight] = useState(null);
-  const generateInsight = () => {
-    const result = generateAlgorithmicInsights(leads, clients, totRev, totOutstanding);
-    setInsight(result);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+  const generateInsight = async () => {
+    setLoading(true);
+    setErr(null);
+    setInsight(null);
+    try {
+      const totalInv = clients.reduce((s, c) => (c.invoices || []).reduce((a, i) => a + (i.amount || 0), 0) + s, 0);
+      const collectionRate = totalInv > 0 ? Math.round(totRev / totalInv * 100) : 0;
+      const topSource = Object.entries(leadsBySource).sort((a, b) => b[1] - a[1])[0];
+      const topStage = LEAD_STAGES.map(st => ({
+        ...st,
+        cnt: leads.filter(l => l.stage === st.id && l.status !== "Won").length
+      })).sort((a, b) => b.cnt - a.cnt)[0];
+      const overallConvRate = leads.length > 0 ? Math.round(wonLeads.length / leads.length * 100) : 0;
+      const prompt = `You are a business development analyst AI for a Philippine-based CRM system. Analyze this data and provide concise, actionable insights. Use PHP peso (₱) for any amounts.
+
+BUSINESS DATA:
+- Total Leads: ${leads.length} (${activeLeads.length} active, ${wonLeads.length} won)
+- Lead Status breakdown: ${JSON.stringify(leadsbyStatus)}
+- Lead Sources: ${JSON.stringify(leadsBySource)}
+- Busiest pipeline stage: ${topStage ? topStage.label + ' (' + topStage.cnt + ' leads)' : 'none'}
+- Top lead source: ${topSource ? topSource[0] + ' with ' + topSource[1] + ' leads' : 'none'}
+- Overall conversion rate: ${overallConvRate}%
+- Yearly conversion data: ${JSON.stringify(convByYear.map(y => ({
+        year: y.yr,
+        rate: y.rate + '%',
+        won: y.won,
+        total: y.total
+      })))}
+- Projected pipeline value: ₱${totalProj.toLocaleString()}
+
+- Total Clients: ${clients.length} (${clients.filter(c => c.status === 'Active').length} active, ${clients.filter(c => c.status === 'Inactive').length} inactive)
+- Total Contract Value: ₱${clients.reduce((s, c) => s + (c.contract || 0), 0).toLocaleString()}
+
+- Total Invoiced: ₱${totalInv.toLocaleString()}
+- Total Collected: ₱${totRev.toLocaleString()}
+- Outstanding Receivables: ₱${totOutstanding.toLocaleString()}
+- Collection Rate: ${collectionRate}%
+
+Respond ONLY with this JSON (no markdown fences, no extra text):
+{"leads":"2-3 sentences on pipeline health, conversion trends, and what to prioritize","clients":"2-3 sentences on client health, retention risks, and renewal actions needed","collections":"2-3 sentences on collection performance, receivables risk, and cash flow observations","overall":"1-2 sentences: overall business health score and single top-priority action"}`;
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 1000,
+          messages: [{
+            role: "user",
+            content: prompt
+          }]
+        })
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`API ${res.status}: ${errBody}`);
+      }
+      const data = await res.json();
+      const text = (data.content || []).map(b => b.text || "").join("");
+      const clean = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      setInsight(parsed);
+    } catch (e) {
+      setErr("Unable to generate insights: " + (e.message || "Unknown error. Check console."));
+      console.error("AIInsights error:", e);
+    }
+    setLoading(false);
   };
   return /*#__PURE__*/React.createElement(Card, {
-    style: { marginBottom: 14 }
+    style: {
+      marginBottom: 14
+    }
   }, /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: insight ? 16 : 0 }
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: insight || loading || err ? 16 : 0
+    }
   }, /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", alignItems: "center", gap: 10 }
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10
+    }
   }, /*#__PURE__*/React.createElement("div", {
-    style: { width: 34, height: 34, borderRadius: 9, background: "linear-gradient(135deg,#1f6feb,#a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }
-  }, "\u2728"), /*#__PURE__*/React.createElement("div", null,
-    /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#f0f6fc" } }, "Business Insights"),
-    /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: "#c9d1d9", marginTop: 1 } }, "Algorithmic analysis of your leads, clients & collections")
-  )), /*#__PURE__*/React.createElement("button", {
+    style: {
+      width: 34,
+      height: 34,
+      borderRadius: 9,
+      background: "linear-gradient(135deg,#1f6feb,#a78bfa)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+      fontSize: 17
+    }
+  }, "\u2728"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      color: "#f0f6fc"
+    }
+  }, "AI Business Insights"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#c9d1d9",
+      marginTop: 1
+    }
+  }, "Powered by Claude \xB7 live analysis of your leads, clients & collections"))), /*#__PURE__*/React.createElement("button", {
     onClick: generateInsight,
-    style: { background: "linear-gradient(135deg,#1f6feb,#a78bfa)", border: "none", color: "#fff", borderRadius: 8, padding: "8px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, flexShrink: 0, whiteSpace: "nowrap" }
-  }, insight ? "\u21BA Refresh" : "\u2728 Generate Insights")),
-  insight && /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
-    [{key:"overall",icon:"\uD83C\uDFAF",label:"Overall Priority",color:"#fbbf24"},
-     {key:"leads",icon:"\uD83D\uDCCA",label:"Leads Pipeline",color:"#60a5fa"},
-     {key:"clients",icon:"\uD83D\uDC65",label:"Client Health",color:"#818cf8"},
-     {key:"collections",icon:"\uD83D\uDCB0",label:"Collections",color:"#4ade80"}
-    ].map(function(item){
-      return insight[item.key] && /*#__PURE__*/React.createElement("div", {
-        key: item.key,
-        style: { background: "#161b22", border: "1px solid "+item.color+"33", borderRadius: 10, padding: "13px 15px" }
-      }, /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 7, marginBottom: 7 } },
-        /*#__PURE__*/React.createElement("span", { style: { fontSize: 15 } }, item.icon),
-        /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: item.color, textTransform: "uppercase", letterSpacing: ".08em" } }, item.label)
-      ), /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, color: "#f0f6fc", lineHeight: 1.75 } }, insight[item.key]));
-    })
-  ),
-  !insight && /*#__PURE__*/React.createElement("div", {
-    style: { textAlign: "center", padding: "20px 0", fontSize: 12, color: "#c9d1d9" }
-  }, "Click ", /*#__PURE__*/React.createElement("strong", { style: { color: "#c9d1d9" } }, "Generate Insights"), " to analyze your business performance."),
-  /*#__PURE__*/React.createElement("style", null, `@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`));
+    disabled: loading,
+    style: {
+      background: loading ? "#21262d" : "linear-gradient(135deg,#1f6feb,#a78bfa)",
+      border: "none",
+      color: "#fff",
+      borderRadius: 8,
+      padding: "8px 18px",
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: loading ? "default" : "pointer",
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      flexShrink: 0,
+      opacity: loading ? 0.7 : 1,
+      whiteSpace: "nowrap"
+    }
+  }, loading ? /*#__PURE__*/React.createElement(React.Fragment, null, "\u27F3 Analyzing\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, "\u2728 Generate Insights"))), err && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#1f0a0a",
+      border: "1px solid #7f1d1d55",
+      borderRadius: 8,
+      padding: "10px 14px",
+      fontSize: 12,
+      color: "#f87171"
+    }
+  }, err), loading && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, ["Leads Pipeline", "Client Health", "Collections", "Overall Priority"].map(lbl => /*#__PURE__*/React.createElement("div", {
+    key: lbl,
+    style: {
+      background: "#161b22",
+      border: "1px solid #21262d",
+      borderRadius: 10,
+      padding: "12px 14px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "#c9d1d9",
+      marginBottom: 8
+    }
+  }, lbl), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#21262d",
+      borderRadius: 4,
+      height: 10,
+      width: "100%",
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: "100%",
+      background: "linear-gradient(90deg,#1f6feb33,#a78bfa33,#1f6feb33)",
+      backgroundSize: "200% 100%",
+      animation: "shimmer 1.5s infinite"
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#21262d",
+      borderRadius: 4,
+      height: 10,
+      width: "70%",
+      marginTop: 6
+    }
+  })))), insight && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 10
+    }
+  }, [{
+    key: "overall",
+    icon: "🎯",
+    label: "Overall Priority",
+    color: "#fbbf24"
+  }, {
+    key: "leads",
+    icon: "📊",
+    label: "Leads Pipeline",
+    color: "#60a5fa"
+  }, {
+    key: "clients",
+    icon: "👥",
+    label: "Client Health",
+    color: "#818cf8"
+  }, {
+    key: "collections",
+    icon: "💰",
+    label: "Collections",
+    color: "#4ade80"
+  }].map(({
+    key,
+    icon,
+    label,
+    color
+  }) => insight[key] && /*#__PURE__*/React.createElement("div", {
+    key: key,
+    style: {
+      background: "#161b22",
+      border: `1px solid ${color}33`,
+      borderRadius: 10,
+      padding: "13px 15px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 7,
+      marginBottom: 7
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 15
+    }
+  }, icon), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: color,
+      textTransform: "uppercase",
+      letterSpacing: ".08em"
+    }
+  }, label)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#f0f6fc",
+      lineHeight: 1.75
+    }
+  }, insight[key]))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "right"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: generateInsight,
+    style: {
+      background: "transparent",
+      border: "1px solid #30363d",
+      color: "#c9d1d9",
+      borderRadius: 6,
+      padding: "4px 12px",
+      fontSize: 11,
+      cursor: "pointer"
+    }
+  }, "\u21BA Refresh"))), !insight && !loading && !err && /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      padding: "20px 0",
+      fontSize: 12,
+      color: "#c9d1d9"
+    }
+  }, "Click ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: "#c9d1d9"
+    }
+  }, "Generate Insights"), " to get AI-powered analysis of your business performance."), /*#__PURE__*/React.createElement("style", null, `@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`));
 }
-
 function Dashboard({
   clients,
   products,
@@ -19230,20 +19561,24 @@ function App() {
   const [page, setPage] = useState("dashboard");
   const [me] = useState(U0[0]);
   const perms = PERMS[me.role];
-  const [users, setUsers] = useState(U0);
-  const [clients, setClients] = useState(C0);
-  const [products, setProducts] = useState(PRODS0);
-  const [leads, setLeads] = useState(LEADS0);
   const [cDetail, setCDetail] = useState(null);
   const [sideOpen, setSideOpen] = useState(false);
-  const [salesTargets, setSalesTargets] = useState({});
-  const [initialLeadModal, setInitialLeadModal] = useState(null); // {lead, tab?}
-  const [quotations, setQuotations] = useState([]); // persisted quotation records
+  const [initialLeadModal, setInitialLeadModal] = useState(null);
+
+  /* ── Firebase-backed collections ── */
+  const [users,        setUsers,        usersStatus]   = useFirebaseCollection(FB.users,        U0,     U0);
+  const [clients,      setClients,      clientsStatus] = useFirebaseCollection(FB.clients,      C0,     C0);
+  const [products,     setProducts,     prodsStatus]   = useFirebaseCollection(FB.products,     PRODS0, PRODS0);
+  const [leads,        setLeads,        leadsStatus]   = useFirebaseCollection(FB.leads,        LEADS0, LEADS0);
+  const [quotations,   setQuotations,   quotesStatus]  = useFirebaseCollection(FB.quotations,   [],     []);
+  const [salesTargets, setSalesTargets, targetsStatus] = useFirebaseValue(FB.salesTargets,      {});
+
+  const fbStatuses = [usersStatus, clientsStatus, prodsStatus, leadsStatus, quotesStatus, targetsStatus];
 
   // Sync data to AI chat panel whenever it changes
-  useEffect(()=>{
+  useEffect(function(){
     if(window._updateCRMData){
-      window._updateCRMData({leads,clients,products,quotations,activities:[]});
+      window._updateCRMData({leads:leads,clients:clients,products:products,quotations:quotations,activities:[]});
     }
   },[leads,clients,products,quotations]);
 
@@ -19453,7 +19788,7 @@ function App() {
       marginTop: 2,
       display: "inline-block"
     }
-  }, me.role)))));
+  }, me.role))), React.createElement(FbStatusBadge, {statuses: fbStatuses})));
   return /*#__PURE__*/React.createElement("div", {
     className: "app"
   }, /*#__PURE__*/React.createElement("div", {
@@ -19594,281 +19929,567 @@ setTimeout(() => {
   }
 }, 100);
 
-/* ── CRM Analyst (local, no API) ── */
-function answerCRMQuestion(q, leads, clients, products, quotations) {
-  var ql = q.toLowerCase();
-  var won = leads.filter(function(l){return l.status==="Won";});
-  var active = leads.filter(function(l){return l.status!=="Won"&&l.status!=="Churned";});
-  var churned = leads.filter(function(l){return l.status==="Churned";});
-  var convRate = leads.length>0?Math.round(won.length/leads.length*100):0;
-  var pipeline = active.reduce(function(s,l){return s+(l.projectedSales||0);},0);
-  var wonVal = won.reduce(function(s,l){return s+(l.projectedSales||0);},0);
-  var totalInv = clients.reduce(function(s,c){return (c.invoices||[]).reduce(function(a,i){return a+(i.amount||0);},s);},0);
-  var totalColl = clients.reduce(function(s,c){return (c.payments||[]).reduce(function(a,p){return a+(p.amount||0);},s);},0);
-  var outstanding = totalInv - totalColl;
-  var totalContract = clients.reduce(function(s,c){return s+(c.contract||0);},0);
-  var activeClients = clients.filter(function(c){return c.status==="Active";});
-  var inactiveClients = clients.filter(function(c){return c.status==="Inactive";});
-  var collRate = totalInv>0?Math.round(totalColl/totalInv*100):0;
-  var activeProds = products.filter(function(p){return p.status==="Active";});
-  var accQ = quotations.filter(function(q){return q.status==="Accepted";});
-  var quotedVal = quotations.reduce(function(s,q){return s+(q.total||0);},0);
-  var accRate = quotations.length>0?Math.round(accQ.length/quotations.length*100):0;
-
-  // Stage breakdown
-  var STAGE_LABELS={"new":"New","leadqualification":"Lead Qualification","discoverydemo":"Discovery & Demo","poc":"Proof of Concept","commercial":"Commercial Proposal","closing":"Closing & Contract","handoff":"Handoff"};
-  var stageMap={};
-  active.forEach(function(l){stageMap[l.stage]=(stageMap[l.stage]||0)+1;});
-  var stageLines=Object.entries(stageMap).sort(function(a,b){return b[1]-a[1];}).map(function(e){return "  - "+(STAGE_LABELS[e[0]]||e[0])+": "+e[1]+" lead"+(e[1]>1?"s":"");}).join("\n");
-
-  // Source breakdown
-  var srcMap={};
-  leads.forEach(function(l){if(l.leadSource){srcMap[l.leadSource]=(srcMap[l.leadSource]||0)+1;}});
-  var srcLines=Object.entries(srcMap).sort(function(a,b){return b[1]-a[1];}).map(function(e){return "  - "+e[0]+": "+e[1]+" lead"+(e[1]>1?"s":"");}).join("\n");
-  var topSrc=Object.entries(srcMap).sort(function(a,b){return b[1]-a[1];})[0];
-
-  // Top clients by contract
-  var topClients=clients.slice().sort(function(a,b){return (b.contract||0)-(a.contract||0);}).slice(0,5);
-
-  // --- Intent matching ---
-
-  // Summary / overview / report
-  if(/\b(summary|overview|report|full report|everything|all data|status)\b/.test(ql)){
-    return "**CRM Summary** as of "+new Date().toLocaleDateString("en-PH")+":\n\n"
-      +"**Leads:** "+leads.length+" total | "+active.length+" active | "+won.length+" won | "+churned.length+" churned\n"
-      +"Win rate: "+convRate+"% | Pipeline value: PHP "+pipeline.toLocaleString()+" | Won value: PHP "+wonVal.toLocaleString()+"\n\n"
-      +"**Clients:** "+clients.length+" total | "+activeClients.length+" active | "+inactiveClients.length+" inactive\n"
-      +"Total contract value: PHP "+totalContract.toLocaleString()+"\n\n"
-      +"**Collections:** PHP "+totalColl.toLocaleString()+" collected / PHP "+totalInv.toLocaleString()+" invoiced ("+collRate+"% rate)\n"
-      +"Outstanding receivables: PHP "+outstanding.toLocaleString()+"\n\n"
-      +"**Quotations:** "+quotations.length+" total | "+accQ.length+" accepted ("+accRate+"%) | Total quoted: PHP "+quotedVal.toLocaleString()+"\n\n"
-      +"**Products:** "+products.length+" total | "+activeProds.length+" active";
-  }
-
-  // Win rate
-  if(/win rate|conversion rate|how many.*won|close rate/.test(ql)){
-    return "Win rate is **"+convRate+"%** ("+won.length+" won out of "+leads.length+" total leads). Won deal value: PHP "+wonVal.toLocaleString()+".";
-  }
-
-  // Pipeline value
-  if(/pipeline|projected|proj(ected)? (sales|value|revenue)/.test(ql)){
-    return "Active pipeline value is **PHP "+pipeline.toLocaleString()+"** across "+active.length+" active leads.";
-  }
-
-  // Lead counts
-  if(/how many leads|lead count|total leads|number of leads/.test(ql)){
-    return "There are **"+leads.length+" leads** in total: "+active.length+" active, "+won.length+" won, "+churned.length+" churned.";
-  }
-
-  // Active leads
-  if(/active leads/.test(ql)){
-    return "There are **"+active.length+" active leads** currently in the pipeline, worth PHP "+pipeline.toLocaleString()+" combined.";
-  }
-
-  // Won leads
-  if(/won leads|closed (deals?|leads?)/.test(ql)){
-    return "**"+won.length+" leads** have been won, with a total deal value of PHP "+wonVal.toLocaleString()+".";
-  }
-
-  // Stage breakdown
-  if(/stage|funnel|pipeline breakdown|where are.*leads/.test(ql)){
-    return "**Lead Stage Breakdown** (active leads only):\n"+( stageLines||"  No active leads.");
-  }
-
-  // Lead sources
-  if(/source|where.*leads.*come|lead origin/.test(ql)){
-    if(!srcLines) return "No lead source data recorded yet.";
-    return "**Lead Sources:**\n"+srcLines+(topSrc?"\n\nTop source: **"+topSrc[0]+"** with "+topSrc[1]+" leads.":"");
-  }
-
-  // Clients
-  if(/how many clients|client count|total clients|number of clients/.test(ql)){
-    return "There are **"+clients.length+" clients** on record: "+activeClients.length+" active and "+inactiveClients.length+" inactive.";
-  }
-
-  // Active clients
-  if(/active clients/.test(ql)){
-    return "**"+activeClients.length+" clients** are currently active.";
-  }
-
-  // Contract value
-  if(/contract value|total contract/.test(ql)){
-    return "Total contract value across all clients is **PHP "+totalContract.toLocaleString()+"**.";
-  }
-
-  // Top clients
-  if(/top client|best client|biggest client|largest client/.test(ql)){
-    if(!topClients.length) return "No clients on record yet.";
-    var lines=topClients.map(function(c,i){return (i+1)+". "+c.company+" — PHP "+(c.contract||0).toLocaleString();}).join("\n");
-    return "**Top Clients by Contract Value:**\n"+lines;
-  }
-
-  // Collections / revenue
-  if(/collect|revenue|cash|payment|how much.*paid|how much.*collected/.test(ql)){
-    return "**Collections:** PHP "+totalColl.toLocaleString()+" collected out of PHP "+totalInv.toLocaleString()+" invoiced.\n"
-      +"Collection rate: **"+collRate+"%**\nOutstanding receivables: **PHP "+outstanding.toLocaleString()+"**";
-  }
-
-  // Outstanding / receivables
-  if(/outstanding|receivable|unpaid|overdue/.test(ql)){
-    return "Outstanding receivables total **PHP "+outstanding.toLocaleString()+"**. "+(collRate<70?"Collection rate is "+collRate+"% — follow-ups are needed.":"Collection rate is "+collRate+"% — on track.");
-  }
-
-  // Invoices
-  if(/invoic|billing|billed/.test(ql)){
-    return "Total invoiced: **PHP "+totalInv.toLocaleString()+"**\nTotal collected: PHP "+totalColl.toLocaleString()+"\nCollection rate: "+collRate+"%";
-  }
-
-  // Quotations
-  if(/quot|proposal|quote/.test(ql)){
-    return "**Quotations:** "+quotations.length+" total | "+accQ.length+" accepted ("+accRate+"% acceptance rate)\nTotal quoted value: PHP "+quotedVal.toLocaleString();
-  }
-
-  // Products
-  if(/product|catalog|how many product/.test(ql)){
-    var cats=[...new Set(products.map(function(p){return p.cat;}).filter(Boolean))];
-    return "**Products:** "+products.length+" total | "+activeProds.length+" active\nCategories: "+(cats.join(", ")||"None recorded");
-  }
-
-  // Health / performance
-  if(/health|perform|doing|how are we|business status/.test(ql)){
-    var score=0;
-    if(convRate>=30)score++;
-    if(collRate>=80)score++;
-    if(activeClients.length>0&&inactiveClients.length/Math.max(clients.length,1)<0.3)score++;
-    if(active.length>0)score++;
-    var health=score>=4?"Strong":score>=3?"Good":score>=2?"Fair":"Needs Attention";
-    return "**Business Health: "+health+"** ("+score+"/4)\n\n"
-      +"- Win rate: "+convRate+"% "+(convRate>=30?"(healthy)":"(needs improvement)")+"\n"
-      +"- Collection rate: "+collRate+"% "+(collRate>=80?"(healthy)":"(needs follow-up)")+"\n"
-      +"- Active pipeline: PHP "+pipeline.toLocaleString()+"\n"
-      +"- Active clients: "+activeClients.length+" / "+clients.length;
-  }
-
-  // Recommendation / priority
-  if(/recommend|priorit|what should|focus|next step|action/.test(ql)){
-    var recs=[];
-    if(collRate<70&&totalInv>0) recs.push("Recover PHP "+outstanding.toLocaleString()+" in outstanding receivables — contact overdue clients immediately.");
-    if(convRate<20&&leads.length>5) recs.push("Win rate is only "+convRate+"%. Review your closing stage leads and address objections.");
-    if(inactiveClients.length>0) recs.push("Re-engage "+inactiveClients.length+" inactive client"+(inactiveClients.length>1?"s":"")+" to recover potential revenue.");
-    var topStageEntry=Object.entries(stageMap).sort(function(a,b){return b[1]-a[1];})[0];
-    if(topStageEntry) recs.push("Unblock "+topStageEntry[1]+" leads stuck at the "+(STAGE_LABELS[topStageEntry[0]]||topStageEntry[0])+" stage.");
-    if(accRate<50&&quotations.length>0) recs.push("Quotation acceptance rate is "+accRate+"%. Follow up on pending quotes to improve conversion.");
-    if(!recs.length) recs.push("Business looks on track. Keep growing the pipeline and maintaining client relationships.");
-    return "**Recommended Actions:**\n"+recs.map(function(r,i){return (i+1)+". "+r;}).join("\n");
-  }
-
-  // Fallback
-  return "I can answer questions about your **leads, clients, pipeline, collections, quotations, and products**. Try asking:\n"
-    +"- \"What is our win rate?\"\n"
-    +"- \"How much is outstanding?\"\n"
-    +"- \"Show me the stage breakdown\"\n"
-    +"- \"Who are our top clients?\"\n"
-    +"- \"Give me a full summary\"\n"
-    +"- \"What should we prioritize?\"";
-}
-
+/* ── AI Report Chat ── */
 function AIChatPanel({leads,clients,products,quotations,activities}) {
   const {useState,useRef,useEffect}=React;
   const [open,setOpen]=useState(false);
-  const [msgs,setMsgs]=useState([{role:"assistant",content:"Hi! I'm your CRM Analyst. I can answer any question about your leads, clients, pipeline, collections, quotations, and products — all from your live data.\n\nTry: *\"Give me a full summary\"* or *\"What should we prioritize?\"*"}]);
+  const [msgs,setMsgs]=useState([{role:"assistant",content:"Hi! I'm your CRM AI analyst. Ask me to **generate a report** or **create a presentation** — I'll analyze all your data across Leads, Clients, Products, Quotations, and Financials.\n\nTry: *\"Generate a full business report as a presentation\"*"}]);
   const [input,setInput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [genStatus,setGenStatus]=useState("");
   const bottomRef=useRef(null);
-  useEffect(()=>{if(bottomRef.current)bottomRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
 
-  const QUICK=[
-    {label:"Full Summary",q:"Give me a full summary"},
-    {label:"Win Rate",q:"What is our win rate?"},
-    {label:"Pipeline Value",q:"What is the pipeline value?"},
-    {label:"Collections",q:"How much have we collected?"},
-    {label:"Outstanding",q:"How much is outstanding?"},
-    {label:"Top Clients",q:"Who are our top clients?"},
-    {label:"Stage Breakdown",q:"Show me the stage breakdown"},
-    {label:"Lead Sources",q:"Where do our leads come from?"},
-    {label:"Quotations",q:"How are our quotations performing?"},
-    {label:"Priorities",q:"What should we prioritize?"},
-  ];
+  useEffect(()=>{if(bottomRef.current)bottomRef.current.scrollIntoView({behavior:"smooth"});},[msgs,loading]);
 
-  const send=(text)=>{
-    var q=text||input.trim();
-    if(!q)return;
+  const buildContext=()=>{
+    const wonLeads=leads.filter(l=>l.status==="Won").length;
+    const activeLeads=leads.filter(l=>l.status!=="Won"&&l.status!=="Churned").length;
+    const totalPipeline=leads.filter(l=>l.status!=="Won"&&l.status!=="Churned").reduce((s,l)=>s+(l.projectedSales||0),0);
+    const wonValue=leads.filter(l=>l.status==="Won").reduce((s,l)=>s+(l.projectedSales||0),0);
+    const totalInvoiced=clients.reduce((s,c)=>(c.invoices||[]).reduce((a,i)=>a+(i.amount||0),s),0);
+    const totalCollected=clients.reduce((s,c)=>(c.payments||[]).reduce((a,p)=>a+(p.amount||0),s),0);
+    const totalContract=clients.reduce((s,c)=>s+(c.contract||0),0);
+    const stageBreakdown=["new","leadqualification","discoverydemo","poc","commercial","closing","handoff"].map(id=>{
+      const st=leads.filter(l=>l.stage===id);
+      return `${id}: ${st.length} leads`;
+    }).join(", ");
+    const topClients=clients.slice(0,5).map(c=>`${c.company} (₱${(c.contract||0).toLocaleString()})`).join(", ");
+    const activeProds=products.filter(p=>p.status==="Active").length;
+    const totalQuotes=quotations.length;
+    const acceptedQuotes=quotations.filter(q=>q.status==="Accepted").length;
+    const quotedValue=quotations.reduce((s,q)=>s+(q.total||0),0);
+    return `CRM DATA SUMMARY (as of ${new Date().toLocaleDateString("en-PH")}):
+LEADS: ${leads.length} total | ${activeLeads} active | ${wonLeads} won
+Pipeline value: ₱${totalPipeline.toLocaleString()} | Won value: ₱${wonValue.toLocaleString()}
+Win rate: ${leads.length>0?Math.round((wonLeads/leads.length)*100):0}%
+Stage breakdown: ${stageBreakdown}
+Lead sources: ${[...new Set(leads.map(l=>l.leadSource).filter(Boolean))].join(", ")||"—"}
+
+CLIENTS: ${clients.length} total
+Contract value: ₱${totalContract.toLocaleString()}
+Total invoiced: ₱${totalInvoiced.toLocaleString()}
+Total collected: ₱${totalCollected.toLocaleString()}
+Collection rate: ${totalInvoiced>0?Math.round((totalCollected/totalInvoiced)*100):0}%
+Top clients: ${topClients||"—"}
+
+PRODUCTS: ${products.length} total | ${activeProds} active
+Categories: ${[...new Set(products.map(p=>p.cat))].join(", ")||"—"}
+
+QUOTATIONS: ${totalQuotes} total | ${acceptedQuotes} accepted
+Total quoted value: ₱${quotedValue.toLocaleString()}
+Acceptance rate: ${totalQuotes>0?Math.round((acceptedQuotes/totalQuotes)*100):0}%
+
+TOP LEADS BY STAGE:
+${leads.slice(0,8).map(l=>`- ${l.company} | ${l.stage} | ${l.status} | ₱${(l.projectedSales||0).toLocaleString()}`).join("\n")}`;
+  };
+
+  const generatePPTX=async(slideData)=>{
+    try{
+      setGenStatus("Designing slides…");
+      const pres=new PptxGenJS();
+      pres.layout="LAYOUT_16x9";
+      pres.author="BizCRM — eTap Inc.";
+      pres.title="Business Development Report";
+      pres.subject="CRM Performance Report";
+
+      // ── Design tokens ──────────────────────────────────────────────────────
+      const C={
+        bg:      "0B0F1A",   // deep navy bg
+        bgCard:  "111827",   // card bg
+        bgLight: "1A2235",   // lighter card/panel
+        bgRow:   "0E1420",   // alternate row
+        navy:    "060D1A",   // cover panel
+        ink:     "F9FAFB",   // primary text (near white)
+        muted:   "94A3B8",   // secondary text
+        dim:     "475569",   // very muted
+        line:    "1E293B",   // dividers
+        blue:    "3B82F6",   // primary accent
+        indigo:  "818CF8",   // purple
+        green:   "10B981",   // success
+        amber:   "F59E0B",   // warning/gold
+        red:     "F87171",   // danger
+        teal:    "2DD4BF",   // teal
+        sky:     "38BDF8",   // sky blue
+      };
+      const F="Calibri";
+
+      // ── Reusable helpers ───────────────────────────────────────────────────
+
+      // Header band (all content slides)
+      const addHeader=(s,sectionLabel,sectionClr,title)=>{
+        // top stripe
+        s.addShape(pres.ShapeType.rect,{x:0,y:0,w:10,h:0.06,fill:{color:sectionClr},line:{color:sectionClr,width:0}});
+        // header bg
+        s.addShape(pres.ShapeType.rect,{x:0,y:0.06,w:10,h:0.82,fill:{color:"0A0F1C"},line:{color:"0A0F1C",width:0}});
+        // section pill
+        if(sectionLabel){
+          const pw=Math.max(1.1,sectionLabel.length*0.115+0.4);
+          s.addShape(pres.ShapeType.rect,{x:0.42,y:0.14,w:pw,h:0.22,fill:{color:sectionClr+"22"},line:{color:sectionClr+"66",width:1}});
+          s.addText(sectionLabel.toUpperCase(),{x:0.42,y:0.14,w:pw,h:0.22,fontSize:6.5,bold:true,color:sectionClr,align:"center",fontFace:F,charSpacing:2});
+        }
+        // title
+        s.addText(title||"",{x:0.42,y:0.42,w:9.0,h:0.4,fontSize:21,bold:true,color:C.ink,fontFace:F,charSpacing:-0.3,shrinkText:true});
+        // underline
+        s.addShape(pres.ShapeType.rect,{x:0.42,y:0.87,w:1.6,h:0.045,fill:{color:sectionClr},line:{color:sectionClr,width:0}});
+        s.addShape(pres.ShapeType.rect,{x:2.1,y:0.888,w:7.5,h:0.012,fill:{color:C.line},line:{color:C.line,width:0}});
+      };
+
+      // Footer band (all content slides)
+      const addFooter=(s,pageNum,total,clr)=>{
+        s.addShape(pres.ShapeType.rect,{x:0,y:5.44,w:10,h:0.19,fill:{color:"080C18"},line:{color:"080C18",width:0}});
+        s.addShape(pres.ShapeType.rect,{x:0,y:5.6,w:10,h:0.03,fill:{color:clr+"55"},line:{color:clr+"55",width:0}});
+        s.addText("eTap Inc.  ·  BizCRM Business Development",{x:0.42,y:5.445,w:6,h:0.18,fontSize:7,color:C.dim,fontFace:F,valign:"middle"});
+        s.addText(`${pageNum} / ${total}`,{x:8.5,y:5.445,w:1.2,h:0.18,fontSize:7.5,color:C.muted,fontFace:F,align:"right",bold:true,valign:"middle"});
+      };
+
+      // KPI card
+      const addKPI=(s,x,y,w,h,value,label,clr)=>{
+        // card shadow
+        s.addShape(pres.ShapeType.rect,{x:x+0.025,y:y+0.03,w,h,fill:{color:"00000050"},line:{color:"00000050",width:0}});
+        // card bg
+        s.addShape(pres.ShapeType.rect,{x,y,w,h,fill:{color:C.bgCard},line:{color:C.line,width:1}});
+        // top glow bar
+        s.addShape(pres.ShapeType.rect,{x,y,w,h:0.055,fill:{color:clr},line:{color:clr,width:0}});
+        // faint inner glow on top half
+        s.addShape(pres.ShapeType.rect,{x:x+0.01,y:y+0.055,w:w-0.02,h:h*0.45,fill:{color:clr+"0A"},line:{color:clr+"00",width:0}});
+        // value
+        s.addText(String(value),{x:x+0.08,y:y+0.1,w:w-0.16,h:h*0.52,fontSize:19,bold:true,color:clr,fontFace:F,align:"center",valign:"middle",shrinkText:true});
+        // separator
+        s.addShape(pres.ShapeType.rect,{x:x+0.18,y:y+h*0.68,w:w-0.36,h:0.012,fill:{color:C.line},line:{color:C.line,width:0}});
+        // label
+        s.addText(label.toUpperCase(),{x:x+0.08,y:y+h*0.73,w:w-0.16,h:h*0.23,fontSize:6.5,color:C.muted,fontFace:F,charSpacing:1.2,align:"center",valign:"top"});
+      };
+
+      // Rich bullets in a styled card
+      const addBulletCard=(s,x,y,w,h,items,accentClr)=>{
+        if(!items||!items.length)return;
+        // card
+        s.addShape(pres.ShapeType.rect,{x,y,w,h,fill:{color:C.bgCard},line:{color:C.line,width:1}});
+        s.addShape(pres.ShapeType.rect,{x,y,w:0.05,h,fill:{color:accentClr},line:{color:accentClr,width:0}});
+        const rows=items.map((line,i)=>{
+          const isHdr=line.startsWith("**");
+          const txt=line.replace(/\*\*/g,"");
+          return{text:txt,options:{
+            bullet:isHdr?false:{type:"bullet",characterCode:"25B8",indent:12},
+            breakLine:true,
+            fontSize:isHdr?11:10,
+            bold:isHdr,
+            color:isHdr?C.ink:C.muted,
+            fontFace:F,
+            paraSpaceAfter:isHdr?4:2,
+            paraSpaceBefore:isHdr&&i>0?8:0,
+          }};
+        });
+        s.addText(rows,{x:x+0.2,y:y+0.18,w:w-0.28,h:h-0.26,valign:"top"});
+      };
+
+      // Two-column card layout
+      const addTwoCol=(s,contentY,contentH,left,right,hclr)=>{
+        const colW=4.49;
+        const lx=0.42, rx=0.42+colW+0.13;
+        // left
+        s.addShape(pres.ShapeType.rect,{x:lx,y:contentY,w:colW,h:contentH,fill:{color:C.bgCard},line:{color:C.line,width:1}});
+        s.addShape(pres.ShapeType.rect,{x:lx,y:contentY,w:colW,h:0.3,fill:{color:hclr+"20"},line:{color:hclr+"00",width:0}});
+        s.addShape(pres.ShapeType.rect,{x:lx,y:contentY,w:0.05,h:contentH,fill:{color:hclr},line:{color:hclr,width:0}});
+        s.addText((left.title||"").toUpperCase(),{x:lx+0.15,y:contentY+0.06,w:colW-0.25,h:0.2,fontSize:7.5,bold:true,color:hclr,fontFace:F,charSpacing:1.5});
+        const lItems=(left.items||[]).map((t,i)=>({text:t,options:{bullet:{type:"bullet",characterCode:"25B8",indent:12},breakLine:true,fontSize:10,color:i===0&&t.startsWith("**")?C.ink:C.muted,bold:t.startsWith("**"),fontFace:F,paraSpaceAfter:2}}));
+        s.addText(lItems,{x:lx+0.2,y:contentY+0.35,w:colW-0.3,h:contentH-0.43,valign:"top"});
+        // right
+        s.addShape(pres.ShapeType.rect,{x:rx,y:contentY,w:colW,h:contentH,fill:{color:C.bgCard},line:{color:C.line,width:1}});
+        s.addShape(pres.ShapeType.rect,{x:rx,y:contentY,w:colW,h:0.3,fill:{color:C.green+"18"},line:{color:C.green+"00",width:0}});
+        s.addShape(pres.ShapeType.rect,{x:rx,y:contentY,w:0.05,h:contentH,fill:{color:C.green},line:{color:C.green,width:0}});
+        s.addText((right.title||"").toUpperCase(),{x:rx+0.15,y:contentY+0.06,w:colW-0.25,h:0.2,fontSize:7.5,bold:true,color:C.green,fontFace:F,charSpacing:1.5});
+        const rItems=(right.items||[]).map(t=>({text:t,options:{bullet:{type:"bullet",characterCode:"25B8",indent:12},breakLine:true,fontSize:10,color:C.muted,fontFace:F,paraSpaceAfter:2}}));
+        s.addText(rItems,{x:rx+0.2,y:contentY+0.35,w:colW-0.3,h:contentH-0.43,valign:"top"});
+      };
+
+      setGenStatus("Rendering slides…");
+      const contentSlides=slideData.filter((_,i)=>i>0&&i<slideData.length-1);
+      const totalPages=contentSlides.length;
+
+      slideData.forEach((slide,si)=>{
+        const s=pres.addSlide();
+        s.background={color:C.bg};
+        const isFirst=si===0;
+        const isLast=si===slideData.length-1;
+
+        // ── COVER ────────────────────────────────────────────────────────────
+        if(isFirst){
+          // full bg gradient simulation
+          s.addShape(pres.ShapeType.rect,{x:0,y:0,w:10,h:5.63,fill:{color:"080D1C"},line:{color:"080D1C",width:0}});
+          // left dark navy panel
+          s.addShape(pres.ShapeType.rect,{x:0,y:0,w:4.0,h:5.63,fill:{color:"060B17"},line:{color:"060B17",width:0}});
+          // left edge accent stripe
+          s.addShape(pres.ShapeType.rect,{x:0,y:0,w:0.09,h:5.63,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          // subtle vertical rule between panels
+          s.addShape(pres.ShapeType.rect,{x:3.98,y:0.3,w:0.015,h:5.03,fill:{color:C.blue+"40"},line:{color:C.blue+"40",width:0}});
+          // decorative circles on left panel
+          s.addShape(pres.ShapeType.ellipse,{x:-0.6,y:3.6,w:3.4,h:3.4,fill:{color:C.blue+"12"},line:{color:C.blue+"25",width:1}});
+          s.addShape(pres.ShapeType.ellipse,{x:0.4,y:4.1,w:1.8,h:1.8,fill:{color:C.indigo+"18"},line:{color:C.indigo+"35",width:1}});
+          s.addShape(pres.ShapeType.ellipse,{x:0.9,y:0.05,w:1.0,h:1.0,fill:{color:C.blue+"10"},line:{color:C.blue+"22",width:1}});
+          // left panel: vertical label
+          s.addText("BUSINESS DEVELOPMENT",{x:0.18,y:1.8,w:3.5,h:2.2,fontSize:9,bold:true,color:C.blue+"BB",fontFace:F,charSpacing:4,valign:"middle",rotate:270});
+          // left panel: date & company pill
+          s.addShape(pres.ShapeType.rect,{x:0.22,y:4.85,w:3.4,h:0.45,fill:{color:C.blue+"18"},line:{color:C.blue+"44",width:1}});
+          s.addText(`${new Date().toLocaleDateString("en-PH",{year:"numeric",month:"long",day:"numeric"})}`,{x:0.22,y:4.88,w:3.4,h:0.2,fontSize:8.5,color:C.muted,fontFace:F,align:"center"});
+          s.addText("eTap Inc.  ·  CRM Report",{x:0.22,y:5.07,w:3.4,h:0.17,fontSize:8,color:C.dim,fontFace:F,align:"center"});
+          // right panel bg — slightly different shade
+          s.addShape(pres.ShapeType.rect,{x:4.05,y:0,w:5.95,h:5.63,fill:{color:"070C1A"},line:{color:"070C1A",width:0}});
+          // top-right accent dot cluster
+          s.addShape(pres.ShapeType.ellipse,{x:8.6,y:-0.3,w:2.0,h:2.0,fill:{color:C.indigo+"15"},line:{color:C.indigo+"00",width:0}});
+          s.addShape(pres.ShapeType.ellipse,{x:8.9,y:-0.1,w:1.0,h:1.0,fill:{color:C.blue+"20"},line:{color:C.blue+"00",width:0}});
+          // top right stripe
+          s.addShape(pres.ShapeType.rect,{x:4.05,y:0,w:5.95,h:0.07,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          // main headline block
+          s.addText("BUSINESS",{x:4.28,y:0.52,w:5.5,h:0.78,fontSize:42,bold:true,color:C.ink,fontFace:F,charSpacing:-1});
+          s.addText("DEVELOPMENT",{x:4.28,y:1.25,w:5.5,h:0.78,fontSize:42,bold:true,color:C.ink,fontFace:F,charSpacing:-1});
+          s.addText("REPORT",{x:4.28,y:1.98,w:5.5,h:0.78,fontSize:42,bold:true,color:C.blue,fontFace:F,charSpacing:-1});
+          // decorative divider line + dot
+          s.addShape(pres.ShapeType.rect,{x:4.28,y:2.9,w:4.4,h:0.03,fill:{color:C.blue+"55"},line:{color:C.blue+"55",width:0}});
+          s.addShape(pres.ShapeType.ellipse,{x:8.67,y:2.875,w:0.07,h:0.07,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:4.28,y:2.92,w:0.05,h:0.7,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          // subtitle
+          if(slide.subtitle) s.addText(slide.subtitle,{x:4.4,y:2.97,w:5.3,h:0.38,fontSize:12.5,color:C.muted,fontFace:F,italic:true});
+          // bottom footer band
+          s.addShape(pres.ShapeType.rect,{x:0,y:5.5,w:10,h:0.13,fill:{color:C.blue+"55"},line:{color:C.blue+"55",width:0}});
+          s.addShape(pres.ShapeType.rect,{x:0,y:5.5,w:10,h:0.04,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addText("CONFIDENTIAL  ·  eTap Inc.",{x:4.3,y:5.18,w:5.4,h:0.28,fontSize:7.5,color:C.dim,fontFace:F,align:"center",charSpacing:1.5});
+          return;
+        }
+
+        // ── THANK YOU / CLOSING ───────────────────────────────────────────────
+        if(isLast){
+          s.addShape(pres.ShapeType.rect,{x:0,y:0,w:10,h:5.63,fill:{color:"070C1A"},line:{color:"070C1A",width:0}});
+          // large ambient glow
+          s.addShape(pres.ShapeType.ellipse,{x:2.0,y:-0.5,w:6,h:6,fill:{color:C.blue+"0E"},line:{color:C.blue+"00",width:0}});
+          s.addShape(pres.ShapeType.ellipse,{x:3.2,y:0.8,w:3.6,h:3.6,fill:{color:C.blue+"14"},line:{color:C.blue+"28",width:1}});
+          s.addShape(pres.ShapeType.ellipse,{x:3.8,y:1.5,w:2.4,h:2.4,fill:{color:C.indigo+"12"},line:{color:C.indigo+"28",width:1}});
+          // top + bottom accent bars
+          s.addShape(pres.ShapeType.rect,{x:0,y:0,w:10,h:0.07,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:0,y:5.56,w:10,h:0.07,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:0,y:5.56,w:10,h:0.07,fill:{color:C.indigo+"88"},line:{color:C.indigo+"88",width:0}});
+          // main text
+          s.addText(slide.title||"Thank You",{x:0.5,y:1.3,w:9,h:1.2,fontSize:46,bold:true,color:C.ink,fontFace:F,align:"center",charSpacing:-1.5});
+          // elegant thin rule with diamond
+          s.addShape(pres.ShapeType.rect,{x:1.5,y:2.72,w:2.8,h:0.035,fill:{color:C.blue+"70"},line:{color:C.blue+"70",width:0}});
+          s.addShape(pres.ShapeType.ellipse,{x:4.945,y:2.706,w:0.11,h:0.065,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:5.7,y:2.72,w:2.8,h:0.035,fill:{color:C.blue+"70"},line:{color:C.blue+"70",width:0}});
+          // subtitle / tagline
+          if(slide.subtitle) s.addText(slide.subtitle,{x:1,y:2.88,w:8,h:0.42,fontSize:12,color:C.muted,fontFace:F,align:"center",italic:true});
+          // company footer
+          s.addText("BizCRM  ·  eTap Inc.  ·  Business Development Platform",{x:1,y:5.14,w:8,h:0.3,fontSize:8.5,color:C.dim,fontFace:F,align:"center",charSpacing:0.5});
+          return;
+        }
+
+        // ── CONTENT SLIDES ────────────────────────────────────────────────────
+        const hclr=slide.sectionColor||C.blue;
+        addHeader(s,slide.section||"",hclr,slide.title||"");
+        addFooter(s,si,totalPages,hclr);
+
+        // KPI tiles row
+        if(slide.kpis&&slide.kpis.length>0){
+          const n=slide.kpis.length;
+          const gap=0.1;
+          const totalGap=gap*(n-1);
+          const kpiW=(9.16-totalGap)/n;
+          slide.kpis.forEach((k,ki)=>{
+            const clrs=[C.blue,C.green,C.amber,C.indigo,C.teal,C.red,C.sky];
+            addKPI(s,0.42+ki*(kpiW+gap),1.03,kpiW,1.0,k.value||"—",k.label||"",clrs[ki%clrs.length]);
+          });
+        }
+
+        const contentY=slide.kpis&&slide.kpis.length>0?2.15:1.05;
+        const contentH=5.38-contentY;
+
+        // Two-column
+        if(slide.left&&slide.right){
+          addTwoCol(s,contentY,contentH,slide.left,slide.right,hclr);
+        }
+        // Body bullets
+        else if(slide.body&&slide.body.length>0){
+          addBulletCard(s,0.42,contentY,9.16,contentH,slide.body,hclr);
+        }
+      });
+
+      setGenStatus("Saving file…");
+      await pres.writeFile({fileName:`eTap_Report_${new Date().toISOString().slice(0,10)}.pptx`});
+      setGenStatus("");
+      return true;
+    }catch(e){
+      setGenStatus("");
+      console.error("PPTX error:",e);
+      return false;
+    }
+  };
+
+  const send=async()=>{
+    const text=input.trim();
+    if(!text||loading)return;
     setInput("");
-    var userMsg={role:"user",content:q};
-    var answer=answerCRMQuestion(q,leads,clients,products,quotations);
-    setMsgs(function(p){return [...p,userMsg,{role:"assistant",content:answer}];});
+    const newMsgs=[...msgs,{role:"user",content:text}];
+    setMsgs(newMsgs);
+    setLoading(true);
+
+    const wantsPPTX=/report|presentation|slide|deck|generate|ppt|powerpoint/i.test(text);
+    const systemPrompt=`You are a CRM business analyst AI for eTap Inc. You have access to real-time CRM data.
+${buildContext()}
+
+${wantsPPTX?`You are creating an elegant, executive-level business development presentation for eTap Inc. Use ONLY real numbers from the CRM data. Every stat, percentage and insight must come from the actual data provided — never use placeholders.
+
+Respond with ONLY a valid JSON object (no markdown fences, no extra text):
+{
+  "message": "I've analyzed your CRM data and built your presentation. Downloading now…",
+  "slides": [
+    {
+      "title": "Cover",
+      "subtitle": "eTap Inc. — Business Development Report",
+      "section": "",
+      "sectionColor": "1f6feb"
+    },
+    {
+      "title": "Executive Summary",
+      "section": "Overview",
+      "sectionColor": "1f6feb",
+      "kpis": [
+        {"label": "Total Leads", "value": "USE REAL NUMBER"},
+        {"label": "Win Rate", "value": "USE REAL %"},
+        {"label": "Active Pipeline", "value": "₱USE REAL AMOUNT"},
+        {"label": "Active Clients", "value": "USE REAL NUMBER"}
+      ],
+      "body": [
+        "**Pipeline Health:** Write 1-2 sentences on pipeline volume and quality using real stage counts.",
+        "**Revenue Status:** Write 1-2 sentences on total invoiced vs collected and collection rate.",
+        "**Top Priority:** One specific, actionable strategic recommendation based on the data gaps."
+      ]
+    },
+    {
+      "title": "Lead Pipeline Analysis",
+      "section": "Sales Pipeline",
+      "sectionColor": "818cf8",
+      "kpis": [
+        {"label": "Active Leads", "value": "REAL"},
+        {"label": "Won This Period", "value": "REAL"},
+        {"label": "Churned / Lost", "value": "REAL"},
+        {"label": "Pipeline Value", "value": "₱REAL"}
+      ],
+      "left": {
+        "title": "Stage Breakdown",
+        "items": ["List each stage with real lead counts", "New: X leads", "Lead Qualification: X leads", "Discovery & Demo: X leads", "Commercial Proposal: X leads", "Closing & Contract: X leads", "Handoff: X leads"]
+      },
+      "right": {
+        "title": "Lead Sources & Quality",
+        "items": ["Show real source breakdown", "Website: X leads", "Referral: X leads", "Event: X leads", "Cold Outreach: X leads", "SQL Qualified: X leads", "MQL Qualified: X leads"]
+      }
+    },
+    {
+      "title": "Client Performance",
+      "section": "Client Success",
+      "sectionColor": "4ade80",
+      "kpis": [
+        {"label": "Total Clients", "value": "REAL"},
+        {"label": "Active Clients", "value": "REAL"},
+        {"label": "Total Contract Value", "value": "₱REAL"},
+        {"label": "Avg Contract", "value": "₱REAL"}
+      ],
+      "body": [
+        "**Client Base:** Describe the client count, active vs inactive, and what that means for revenue stability.",
+        "**Contract Status:** Summarize total contract value and whether billing is on track.",
+        "**Risk Flags:** Identify any clients with upcoming renewals, large outstanding balances, or inactivity.",
+        "**Growth Signal:** Which client segments or industries show the most potential based on current data."
+      ]
+    },
+    {
+      "title": "Financial Collections",
+      "section": "Revenue & Collections",
+      "sectionColor": "fbbf24",
+      "kpis": [
+        {"label": "Total Invoiced", "value": "₱REAL"},
+        {"label": "Total Collected", "value": "₱REAL"},
+        {"label": "Outstanding", "value": "₱REAL"},
+        {"label": "Collection Rate", "value": "REAL%"}
+      ],
+      "left": {
+        "title": "Invoicing Summary",
+        "items": ["Total invoices raised: X", "Paid invoices: X", "Unpaid / Pending: X", "Average invoice size: ₱X", "Oldest outstanding: describe if known"]
+      },
+      "right": {
+        "title": "Collection Insights",
+        "items": ["Collection rate vs target", "Cash collected this period: ₱X", "Receivables at risk: describe", "Action needed: specific follow-ups", "Projected next collection: estimate"]
+      }
+    },
+    {
+      "title": "Quotations & Products",
+      "section": "Commercial Activity",
+      "sectionColor": "2dd4bf",
+      "kpis": [
+        {"label": "Quotes Created", "value": "REAL"},
+        {"label": "Accepted", "value": "REAL"},
+        {"label": "Acceptance Rate", "value": "REAL%"},
+        {"label": "Quoted Value", "value": "₱REAL"}
+      ],
+      "body": [
+        "**Quote Pipeline:** Describe total quotes in progress, values, and conversion performance.",
+        "**Top Products:** List the most commonly quoted machine series or services from the data.",
+        "**Pricing Observation:** Comment on discount trends or pricing patterns if visible.",
+        "**Opportunity:** Identify quotes that are Sent or Draft that need follow-up to convert."
+      ]
+    },
+    {
+      "title": "Strategic Recommendations",
+      "section": "Action Plan",
+      "sectionColor": "f87171",
+      "body": [
+        "**1. Pipeline Acceleration:** Specific action to move stalled leads — reference which stage has the most stuck leads.",
+        "**2. Collections Drive:** Name specific actions to recover the outstanding ₱X receivables within 30 days.",
+        "**3. Client Retention:** Identify renewal or expansion opportunities with existing clients.",
+        "**4. Product Focus:** Recommend which machine series or services to prioritize based on quote and lead data.",
+        "**5. Conversion Improvement:** Specific change to improve win rate from current X% toward a target."
+      ]
+    },
+    {
+      "title": "Thank You",
+      "subtitle": "eTap Inc.  |  partnerships@etapinc.com  |  etap.com.ph",
+      "section": "",
+      "sectionColor": "1f6feb"
+    }
+  ]
+}
+
+RULES:
+- Replace every instance of REAL, X, or placeholder text with actual numbers from the CRM data I provided.
+- Body items should be 1-2 complete sentences each, not just labels.
+- The tone should be professional, executive-level, confident, and data-driven.
+- If a number is 0 or data is absent, say so clearly ("No clients yet — pipeline focus needed").
+- Generate exactly 8 slides in this order: Cover, Executive Summary, Pipeline, Clients, Financials, Quotations, Recommendations, Thank You.`
+:`Answer the user's question concisely using the CRM data provided. Be specific with numbers.`}`;
+
+    try{
+      const resp=await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "anthropic-version":"2023-06-01",
+          "anthropic-dangerous-direct-browser-access":"true",
+        },
+        body:JSON.stringify({
+          model:"claude-sonnet-4-5",
+          max_tokens:4000,
+          system:systemPrompt,
+          messages:newMsgs.map(m=>({role:m.role,content:m.content})),
+        })
+      });
+      if(!resp.ok){
+        const errBody=await resp.text();
+        throw new Error(`API ${resp.status}: ${errBody}`);
+      }
+      const data=await resp.json();
+      const raw=data.content?.[0]?.text||"Sorry, I couldn't generate a response.";
+
+      if(wantsPPTX){
+        try{
+          const parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());
+          const userMsg=parsed.message||"Generating your presentation…";
+          setMsgs(p=>[...p,{role:"assistant",content:userMsg+"\n\n⏳ Building PPTX…"}]);
+          setLoading(false);
+          const ok=await generatePPTX(parsed.slides||[]);
+          setMsgs(p=>[...p.slice(0,-1),{role:"assistant",content:userMsg+"\n\n"+(ok?"✅ **Presentation downloaded!** Check your downloads folder.":"❌ Error generating PPTX. Try again.")}]);
+          return;
+        }catch(e){
+          // Not JSON — just show the text
+        }
+      }
+      setMsgs(p=>[...p,{role:"assistant",content:raw}]);
+    }catch(e){
+      console.error("AI Chat error:",e);
+      setMsgs(p=>[...p,{role:"assistant",content:"⚠️ Error: "+(e.message||"Connection failed. Please try again.")}]);
+    }finally{
+      setLoading(false);
+    }
   };
 
-  const fmt=function(txt){
-    return txt
-      .replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>")
-      .replace(/\*(.*?)\*/g,"<em>$1</em>")
-      .replace(/\n/g,"<br/>");
-  };
+  const fmt=txt=>txt.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\*(.*?)\*/g,"<em>$1</em>").replace(/\n/g,"<br/>");
 
   return React.createElement(React.Fragment,null,
+    // FAB button
     React.createElement("button",{
-      onClick:()=>setOpen(function(o){return !o;}),
-      style:{position:"fixed",bottom:24,right:24,zIndex:900,width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#1f6feb,#818cf8)",border:"none",color:"#fff",fontSize:22,cursor:"pointer",boxShadow:"0 4px 20px #1f6feb55",display:"flex",alignItems:"center",justifyContent:"center"},
-      title:"CRM Analyst",
-    },"\uD83E\uDD16"),
+      onClick:()=>setOpen(o=>!o),
+      style:{position:"fixed",bottom:24,right:24,zIndex:900,width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#1f6feb,#818cf8)",border:"none",color:"#fff",fontSize:22,cursor:"pointer",boxShadow:"0 4px 20px #1f6feb55",display:"flex",alignItems:"center",justifyContent:"center",transition:"transform .15s"},
+      onMouseEnter:e=>e.currentTarget.style.transform="scale(1.08)",
+      onMouseLeave:e=>e.currentTarget.style.transform="scale(1)",
+      title:"AI Report Assistant",
+    },"🤖"),
 
-    open && React.createElement("div",{
-      style:{position:"fixed",bottom:88,right:24,zIndex:901,width:370,maxWidth:"calc(100vw - 32px)",background:"#0d1117",border:"1px solid #21262d",borderRadius:14,boxShadow:"0 8px 40px #00000088",display:"flex",flexDirection:"column",maxHeight:"70vh"},
+    // Chat panel
+    open&&React.createElement("div",{
+      style:{position:"fixed",bottom:86,right:24,zIndex:901,width:380,height:520,background:"#0d1117",border:"1px solid #30363d",borderRadius:16,boxShadow:"0 16px 48px #00000099",display:"flex",flexDirection:"column",overflow:"hidden"},
     },
       // Header
-      React.createElement("div",{style:{padding:"14px 16px",borderBottom:"1px solid #21262d",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}},
-        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:9}},
-          React.createElement("div",{style:{fontSize:18}},"\uD83E\uDD16"),
-          React.createElement("div",null,
-            React.createElement("div",{style:{fontSize:13,fontWeight:700,color:"#f0f6fc"}},"CRM Analyst"),
-            React.createElement("div",{style:{fontSize:10,color:"#4ade80"}},"\u25CF Live data \u2014 no API key needed")
-          )
+      React.createElement("div",{style:{padding:"14px 16px",borderBottom:"1px solid #21262d",display:"flex",alignItems:"center",gap:10,background:"#161b22",flexShrink:0}},
+        React.createElement("div",{style:{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#1f6feb,#818cf8)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}},"🤖"),
+        React.createElement("div",{style:{flex:1}},
+          React.createElement("div",{style:{fontSize:13,fontWeight:700,color:"#f0f6fc"}}, "BizCRM AI Analyst"),
+          React.createElement("div",{style:{fontSize:10,color:"#4ade80"}}, "● Online")
         ),
-        React.createElement("button",{onClick:()=>setOpen(false),style:{background:"none",border:"none",color:"#6b7280",fontSize:18,cursor:"pointer",lineHeight:1}},"\u00D7")
-      ),
-
-      // Quick buttons
-      React.createElement("div",{style:{padding:"10px 12px 6px",borderBottom:"1px solid #21262d",display:"flex",flexWrap:"wrap",gap:6,flexShrink:0}},
-        QUICK.map(function(item){
-          return React.createElement("button",{
-            key:item.label,
-            onClick:function(){send(item.q);},
-            style:{background:"#161b22",border:"1px solid #30363d",color:"#c9d1d9",borderRadius:20,padding:"4px 10px",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"},
-          },item.label);
-        })
+        React.createElement("button",{onClick:()=>setOpen(false),style:{background:"none",border:"1px solid #30363d",color:"#c9d1d9",borderRadius:6,width:28,height:28,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}},"×"),
       ),
 
       // Messages
-      React.createElement("div",{style:{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}},
-        msgs.map(function(m,i){
-          return React.createElement("div",{key:i,style:{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}},
-            React.createElement("div",{
-              style:{maxWidth:"88%",background:m.role==="user"?"#1f6feb22":"#161b22",border:"1px solid "+(m.role==="user"?"#1f6feb44":"#21262d"),borderRadius:10,padding:"9px 12px",fontSize:12,color:"#f0f6fc",lineHeight:1.65},
-              dangerouslySetInnerHTML:{__html:fmt(m.content)}
-            })
-          );
-        }),
-        React.createElement("div",{ref:bottomRef})
+      React.createElement("div",{style:{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}},
+        msgs.map((m,i)=>React.createElement("div",{key:i,style:{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}},
+          React.createElement("div",{
+            style:{maxWidth:"85%",background:m.role==="user"?"#1f6feb":"#161b22",color:"#f0f6fc",borderRadius:m.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px",padding:"9px 12px",fontSize:12,lineHeight:1.5,border:m.role==="user"?"none":"1px solid #21262d"},
+            dangerouslySetInnerHTML:{__html:fmt(m.content)},
+          })
+        )),
+        loading&&React.createElement("div",{style:{display:"flex",justifyContent:"flex-start"}},
+          React.createElement("div",{style:{background:"#161b22",border:"1px solid #21262d",borderRadius:"12px 12px 12px 2px",padding:"9px 14px",display:"flex",gap:4,alignItems:"center"}},
+            [0,1,2].map(i=>React.createElement("div",{key:i,style:{width:6,height:6,borderRadius:"50%",background:"#1f6feb",animation:`bounce 1.2s ${i*0.2}s infinite`}})),
+          )
+        ),
+        genStatus&&React.createElement("div",{style:{textAlign:"center",fontSize:11,color:"#818cf8",padding:"4px 0"}},"⚙️ "+genStatus),
+        React.createElement("div",{ref:bottomRef}),
+      ),
+
+      // Quick actions
+      React.createElement("div",{style:{padding:"8px 12px",borderTop:"1px solid #21262d",display:"flex",gap:6,flexWrap:"wrap",flexShrink:0}},
+        ["Generate full report","Pipeline summary","Financial overview","Top clients"].map(q=>
+          React.createElement("button",{key:q,onClick:()=>{setInput(q);},style:{background:"#161b22",border:"1px solid #30363d",color:"#c9d1d9",borderRadius:20,padding:"4px 10px",fontSize:10,cursor:"pointer",whiteSpace:"nowrap"}},q)
+        )
       ),
 
       // Input
-      React.createElement("div",{style:{padding:"10px 12px",borderTop:"1px solid #21262d",display:"flex",gap:8,flexShrink:0}},
+      React.createElement("div",{style:{padding:"10px 12px",borderTop:"1px solid #21262d",display:"flex",gap:8,flexShrink:0,background:"#0d1117"}},
         React.createElement("input",{
-          value:input,
-          onChange:function(e){setInput(e.target.value);},
-          onKeyDown:function(e){if(e.key==="Enter"&&!e.shiftKey)send();},
-          placeholder:"Ask anything about your CRM data\u2026",
+          value:input,onChange:e=>setInput(e.target.value),
+          onKeyDown:e=>e.key==="Enter"&&!e.shiftKey&&send(),
+          placeholder:"Ask for a report or presentation…",
           style:{flex:1,background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"8px 12px",color:"#f0f6fc",fontSize:12,outline:"none"},
         }),
         React.createElement("button",{
-          onClick:function(){send();},
-          disabled:!input.trim(),
-          style:{background:!input.trim()?"#21262d":"#1f6feb",border:"none",color:!input.trim()?"#4b5563":"#fff",borderRadius:8,padding:"8px 12px",cursor:!input.trim()?"default":"pointer",fontSize:13,fontWeight:700,flexShrink:0},
-        },"\u2192")
-      )
-    )
+          onClick:send,disabled:loading||!input.trim(),
+          style:{background:loading||!input.trim()?"#21262d":"#1f6feb",border:"none",color:loading||!input.trim()?"#4b5563":"#fff",borderRadius:8,padding:"8px 12px",cursor:loading||!input.trim()?"default":"pointer",fontSize:13,fontWeight:700,flexShrink:0},
+        },"→"),
+      ),
+    ),
+
+    // Bounce keyframes
+    React.createElement("style",null,`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`),
   );
 }
+
+// Mount AI chat with access to app data
+const AppWithAI=()=>{
+  const appEl=document.getElementById("root");
+  return null; // mounted separately below
+};
+
+// Re-render App with AI chat overlay
+const OriginalApp=App;
+App=function AppWrapped(){
+  const inst=React.createElement(OriginalApp,null);
+  // We need access to state - mount AI chat as a sibling portal
+  return inst;
+};
 
 // Mount AI Chat as a portal using a separate root
 const aiRoot=document.createElement("div");
@@ -19876,12 +20497,14 @@ aiRoot.id="ai-chat-root";
 document.body.appendChild(aiRoot);
 const aiReactRoot=ReactDOM.createRoot(aiRoot);
 
+// We need to share data - use a simple global event bus
 window._crmDataBus={leads:[],clients:[],products:[],quotations:[],activities:[]};
-window._updateCRMData=function(data){
-  window._crmDataBus=Object.assign({},window._crmDataBus,data);
+window._updateCRMData=(data)=>{
+  window._crmDataBus={...window._crmDataBus,...data};
   aiReactRoot.render(React.createElement(AIChatPanel,window._crmDataBus));
 };
 
+// Initial render of AI panel
 aiReactRoot.render(React.createElement(AIChatPanel,{leads:[],clients:[],products:[],quotations:[],activities:[]}));
 
 </script>
