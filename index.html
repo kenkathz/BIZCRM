@@ -114,7 +114,8 @@ const FIREBASE_CONFIG = {
    ANTHROPIC API KEY - paste your key from console.anthropic.com/keys
    Format: sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ----------------------------------------------------------------------- */
-const ANTHROPIC_API_KEY = "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";
+const ANTHROPIC_API_KEY = "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
+";
 
 /* Firebase init - only runs once */
 let _db = null;
@@ -144,7 +145,7 @@ const FB = {
     seed data so sample records appear on first use.
   - status: "loading" | "ready" | "offline"
 */
-function useFirebaseCollection(path, defaultValue, seedData) {
+function useFirebaseCollection(path, defaultValue) {
   const [data, setDataLocal] = useState(defaultValue);
   const [status, setStatus] = useState(_fbReady ? "loading" : "offline");
   const seededRef = useRef(false);
@@ -155,15 +156,7 @@ function useFirebaseCollection(path, defaultValue, seedData) {
     const handler = ref.on("value", function(snap) {
       const val = snap.val();
       if (val === null) {
-        /* Nothing in DB yet - seed with sample data if provided */
-        if (seedData && !seededRef.current) {
-          seededRef.current = true;
-          const obj = {};
-          seedData.forEach(function(item) { obj[item.id] = item; });
-          ref.set(obj);
-        } else {
-          setDataLocal(defaultValue);
-        }
+        setDataLocal(defaultValue);
       } else {
         const arr = Object.values(val);
         setDataLocal(arr);
@@ -19568,11 +19561,11 @@ function App() {
   const [initialLeadModal, setInitialLeadModal] = useState(null);
 
   /* ── Firebase-backed collections ── */
-  const [users,        setUsers,        usersStatus]   = useFirebaseCollection(FB.users,        U0,     U0);
-  const [clients,      setClients,      clientsStatus] = useFirebaseCollection(FB.clients,      C0,     C0);
-  const [products,     setProducts,     prodsStatus]   = useFirebaseCollection(FB.products,     PRODS0, PRODS0);
-  const [leads,        setLeads,        leadsStatus]   = useFirebaseCollection(FB.leads,        LEADS0, LEADS0);
-  const [quotations,   setQuotations,   quotesStatus]  = useFirebaseCollection(FB.quotations,   [],     []);
+  const [users,        setUsers,        usersStatus]   = useFirebaseCollection(FB.users,        []);
+  const [clients,      setClients,      clientsStatus] = useFirebaseCollection(FB.clients,      []);
+  const [products,     setProducts,     prodsStatus]   = useFirebaseCollection(FB.products,     []);
+  const [leads,        setLeads,        leadsStatus]   = useFirebaseCollection(FB.leads,        []);
+  const [quotations,   setQuotations,   quotesStatus]  = useFirebaseCollection(FB.quotations,   []);
   const [salesTargets, setSalesTargets, targetsStatus] = useFirebaseValue(FB.salesTargets,      {});
 
   const fbStatuses = [usersStatus, clientsStatus, prodsStatus, leadsStatus, quotesStatus, targetsStatus];
