@@ -110,6 +110,12 @@ const FIREBASE_CONFIG = {
   appId: "1:99400245451:web:c7fdbb79f7f2a82192fb4e"
 };
 
+/* -----------------------------------------------------------------------
+   ANTHROPIC API KEY - paste your key from console.anthropic.com/keys
+   Format: sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+----------------------------------------------------------------------- */
+const ANTHROPIC_API_KEY = "YOUR_ANTHROPIC_API_KEY";
+
 /* Firebase init - only runs once */
 let _db = null;
 let _fbReady = false;
@@ -5640,6 +5646,7 @@ Respond ONLY with this JSON (no markdown fences, no extra text):
           "Content-Type": "application/json",
           "anthropic-version": "2023-06-01",
           "anthropic-dangerous-direct-browser-access": "true",
+          "x-api-key": ANTHROPIC_API_KEY,
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-5",
@@ -20019,7 +20026,7 @@ ${leads.slice(0,8).map(l=>`- ${l.company} | ${l.stage} | ${l.status} | ₱${(l.p
         // section pill
         if(sectionLabel){
           const pw=Math.max(1.1,sectionLabel.length*0.115+0.4);
-          s.addShape(pres.ShapeType.rect,{x:0.42,y:0.14,w:pw,h:0.22,fill:{color:sectionClr},line:{color:sectionClr,width:1}});
+          s.addShape(pres.ShapeType.rect,{x:0.42,y:0.14,w:pw,h:0.22,fill:{color:sectionClr+"22"},line:{color:sectionClr+"66",width:1}});
           s.addText(sectionLabel.toUpperCase(),{x:0.42,y:0.14,w:pw,h:0.22,fontSize:6.5,bold:true,color:sectionClr,align:"center",fontFace:F,charSpacing:2});
         }
         // title
@@ -20032,7 +20039,7 @@ ${leads.slice(0,8).map(l=>`- ${l.company} | ${l.stage} | ${l.status} | ₱${(l.p
       // Footer band (all content slides)
       const addFooter=(s,pageNum,total,clr)=>{
         s.addShape(pres.ShapeType.rect,{x:0,y:5.44,w:10,h:0.19,fill:{color:"080C18"},line:{color:"080C18",width:0}});
-        s.addShape(pres.ShapeType.rect,{x:0,y:5.6,w:10,h:0.03,fill:{color:clr},line:{color:clr,width:0}});
+        s.addShape(pres.ShapeType.rect,{x:0,y:5.6,w:10,h:0.03,fill:{color:clr+"55"},line:{color:clr+"55",width:0}});
         s.addText("eTap Inc.  ·  BizCRM Business Development",{x:0.42,y:5.445,w:6,h:0.18,fontSize:7,color:C.dim,fontFace:F,valign:"middle"});
         s.addText(`${pageNum} / ${total}`,{x:8.5,y:5.445,w:1.2,h:0.18,fontSize:7.5,color:C.muted,fontFace:F,align:"right",bold:true,valign:"middle"});
       };
@@ -20040,13 +20047,13 @@ ${leads.slice(0,8).map(l=>`- ${l.company} | ${l.stage} | ${l.status} | ₱${(l.p
       // KPI card
       const addKPI=(s,x,y,w,h,value,label,clr)=>{
         // card shadow
-        s.addShape(pres.ShapeType.rect,{x:x+0.025,y:y+0.03,w,h,fill:{color:"000000"},line:{color:"000000",width:0}});
+        s.addShape(pres.ShapeType.rect,{x:x+0.025,y:y+0.03,w,h,fill:{color:"00000050"},line:{color:"00000050",width:0}});
         // card bg
         s.addShape(pres.ShapeType.rect,{x,y,w,h,fill:{color:C.bgCard},line:{color:C.line,width:1}});
         // top glow bar
         s.addShape(pres.ShapeType.rect,{x,y,w,h:0.055,fill:{color:clr},line:{color:clr,width:0}});
         // faint inner glow on top half
-        s.addShape(pres.ShapeType.rect,{x:x+0.01,y:y+0.055,w:w-0.02,h:h*0.45,fill:{color:clr},line:{color:clr,width:0}});
+        s.addShape(pres.ShapeType.rect,{x:x+0.01,y:y+0.055,w:w-0.02,h:h*0.45,fill:{color:clr+"0A"},line:{color:clr+"00",width:0}});
         // value
         s.addText(String(value),{x:x+0.08,y:y+0.1,w:w-0.16,h:h*0.52,fontSize:19,bold:true,color:clr,fontFace:F,align:"center",valign:"middle",shrinkText:true});
         // separator
@@ -20084,14 +20091,14 @@ ${leads.slice(0,8).map(l=>`- ${l.company} | ${l.stage} | ${l.status} | ₱${(l.p
         const lx=0.42, rx=0.42+colW+0.13;
         // left
         s.addShape(pres.ShapeType.rect,{x:lx,y:contentY,w:colW,h:contentH,fill:{color:C.bgCard},line:{color:C.line,width:1}});
-        s.addShape(pres.ShapeType.rect,{x:lx,y:contentY,w:colW,h:0.3,fill:{color:hclr},line:{color:hclr,width:0}});
+        s.addShape(pres.ShapeType.rect,{x:lx,y:contentY,w:colW,h:0.3,fill:{color:hclr+"20"},line:{color:hclr+"00",width:0}});
         s.addShape(pres.ShapeType.rect,{x:lx,y:contentY,w:0.05,h:contentH,fill:{color:hclr},line:{color:hclr,width:0}});
         s.addText((left.title||"").toUpperCase(),{x:lx+0.15,y:contentY+0.06,w:colW-0.25,h:0.2,fontSize:7.5,bold:true,color:hclr,fontFace:F,charSpacing:1.5});
         const lItems=(left.items||[]).map((t,i)=>({text:t,options:{bullet:{type:"bullet",characterCode:"25B8",indent:12},breakLine:true,fontSize:10,color:i===0&&t.startsWith("**")?C.ink:C.muted,bold:t.startsWith("**"),fontFace:F,paraSpaceAfter:2}}));
         s.addText(lItems,{x:lx+0.2,y:contentY+0.35,w:colW-0.3,h:contentH-0.43,valign:"top"});
         // right
         s.addShape(pres.ShapeType.rect,{x:rx,y:contentY,w:colW,h:contentH,fill:{color:C.bgCard},line:{color:C.line,width:1}});
-        s.addShape(pres.ShapeType.rect,{x:rx,y:contentY,w:colW,h:0.3,fill:{color:C.green},line:{color:C.green,width:0}});
+        s.addShape(pres.ShapeType.rect,{x:rx,y:contentY,w:colW,h:0.3,fill:{color:C.green+"18"},line:{color:C.green+"00",width:0}});
         s.addShape(pres.ShapeType.rect,{x:rx,y:contentY,w:0.05,h:contentH,fill:{color:C.green},line:{color:C.green,width:0}});
         s.addText((right.title||"").toUpperCase(),{x:rx+0.15,y:contentY+0.06,w:colW-0.25,h:0.2,fontSize:7.5,bold:true,color:C.green,fontFace:F,charSpacing:1.5});
         const rItems=(right.items||[]).map(t=>({text:t,options:{bullet:{type:"bullet",characterCode:"25B8",indent:12},breakLine:true,fontSize:10,color:C.muted,fontFace:F,paraSpaceAfter:2}}));
@@ -20117,22 +20124,22 @@ ${leads.slice(0,8).map(l=>`- ${l.company} | ${l.stage} | ${l.status} | ₱${(l.p
           // left edge accent stripe
           s.addShape(pres.ShapeType.rect,{x:0,y:0,w:0.09,h:5.63,fill:{color:C.blue},line:{color:C.blue,width:0}});
           // subtle vertical rule between panels
-          s.addShape(pres.ShapeType.rect,{x:3.98,y:0.3,w:0.015,h:5.03,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:3.98,y:0.3,w:0.015,h:5.03,fill:{color:C.blue+"40"},line:{color:C.blue+"40",width:0}});
           // decorative circles on left panel
-          s.addShape(pres.ShapeType.ellipse,{x:-0.6,y:3.6,w:3.4,h:3.4,fill:{color:C.blue},line:{color:C.blue,width:1}});
-          s.addShape(pres.ShapeType.ellipse,{x:0.4,y:4.1,w:1.8,h:1.8,fill:{color:C.indigo},line:{color:C.indigo,width:1}});
-          s.addShape(pres.ShapeType.ellipse,{x:0.9,y:0.05,w:1.0,h:1.0,fill:{color:C.blue},line:{color:C.blue,width:1}});
+          s.addShape(pres.ShapeType.ellipse,{x:-0.6,y:3.6,w:3.4,h:3.4,fill:{color:C.blue+"12"},line:{color:C.blue+"25",width:1}});
+          s.addShape(pres.ShapeType.ellipse,{x:0.4,y:4.1,w:1.8,h:1.8,fill:{color:C.indigo+"18"},line:{color:C.indigo+"35",width:1}});
+          s.addShape(pres.ShapeType.ellipse,{x:0.9,y:0.05,w:1.0,h:1.0,fill:{color:C.blue+"10"},line:{color:C.blue+"22",width:1}});
           // left panel: vertical label
-          s.addText("BUSINESS DEVELOPMENT",{x:0.18,y:1.8,w:3.5,h:2.2,fontSize:9,bold:true,color:C.blue,fontFace:F,charSpacing:4,valign:"middle",rotate:270});
+          s.addText("BUSINESS DEVELOPMENT",{x:0.18,y:1.8,w:3.5,h:2.2,fontSize:9,bold:true,color:C.blue+"BB",fontFace:F,charSpacing:4,valign:"middle",rotate:270});
           // left panel: date & company pill
-          s.addShape(pres.ShapeType.rect,{x:0.22,y:4.85,w:3.4,h:0.45,fill:{color:C.blue},line:{color:C.blue,width:1}});
+          s.addShape(pres.ShapeType.rect,{x:0.22,y:4.85,w:3.4,h:0.45,fill:{color:C.blue+"18"},line:{color:C.blue+"44",width:1}});
           s.addText(`${new Date().toLocaleDateString("en-PH",{year:"numeric",month:"long",day:"numeric"})}`,{x:0.22,y:4.88,w:3.4,h:0.2,fontSize:8.5,color:C.muted,fontFace:F,align:"center"});
           s.addText("eTap Inc.  ·  CRM Report",{x:0.22,y:5.07,w:3.4,h:0.17,fontSize:8,color:C.dim,fontFace:F,align:"center"});
           // right panel bg — slightly different shade
           s.addShape(pres.ShapeType.rect,{x:4.05,y:0,w:5.95,h:5.63,fill:{color:"070C1A"},line:{color:"070C1A",width:0}});
           // top-right accent dot cluster
-          s.addShape(pres.ShapeType.ellipse,{x:8.6,y:-0.3,w:2.0,h:2.0,fill:{color:C.indigo},line:{color:C.indigo,width:0}});
-          s.addShape(pres.ShapeType.ellipse,{x:8.9,y:-0.1,w:1.0,h:1.0,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.ellipse,{x:8.6,y:-0.3,w:2.0,h:2.0,fill:{color:C.indigo+"15"},line:{color:C.indigo+"00",width:0}});
+          s.addShape(pres.ShapeType.ellipse,{x:8.9,y:-0.1,w:1.0,h:1.0,fill:{color:C.blue+"20"},line:{color:C.blue+"00",width:0}});
           // top right stripe
           s.addShape(pres.ShapeType.rect,{x:4.05,y:0,w:5.95,h:0.07,fill:{color:C.blue},line:{color:C.blue,width:0}});
           // main headline block
@@ -20140,13 +20147,13 @@ ${leads.slice(0,8).map(l=>`- ${l.company} | ${l.stage} | ${l.status} | ₱${(l.p
           s.addText("DEVELOPMENT",{x:4.28,y:1.25,w:5.5,h:0.78,fontSize:42,bold:true,color:C.ink,fontFace:F,charSpacing:-1});
           s.addText("REPORT",{x:4.28,y:1.98,w:5.5,h:0.78,fontSize:42,bold:true,color:C.blue,fontFace:F,charSpacing:-1});
           // decorative divider line + dot
-          s.addShape(pres.ShapeType.rect,{x:4.28,y:2.9,w:4.4,h:0.03,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:4.28,y:2.9,w:4.4,h:0.03,fill:{color:C.blue+"55"},line:{color:C.blue+"55",width:0}});
           s.addShape(pres.ShapeType.ellipse,{x:8.67,y:2.875,w:0.07,h:0.07,fill:{color:C.blue},line:{color:C.blue,width:0}});
           s.addShape(pres.ShapeType.rect,{x:4.28,y:2.92,w:0.05,h:0.7,fill:{color:C.blue},line:{color:C.blue,width:0}});
           // subtitle
           if(slide.subtitle) s.addText(slide.subtitle,{x:4.4,y:2.97,w:5.3,h:0.38,fontSize:12.5,color:C.muted,fontFace:F,italic:true});
           // bottom footer band
-          s.addShape(pres.ShapeType.rect,{x:0,y:5.5,w:10,h:0.13,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:0,y:5.5,w:10,h:0.13,fill:{color:C.blue+"55"},line:{color:C.blue+"55",width:0}});
           s.addShape(pres.ShapeType.rect,{x:0,y:5.5,w:10,h:0.04,fill:{color:C.blue},line:{color:C.blue,width:0}});
           s.addText("CONFIDENTIAL  ·  eTap Inc.",{x:4.3,y:5.18,w:5.4,h:0.28,fontSize:7.5,color:C.dim,fontFace:F,align:"center",charSpacing:1.5});
           return;
@@ -20156,19 +20163,19 @@ ${leads.slice(0,8).map(l=>`- ${l.company} | ${l.stage} | ${l.status} | ₱${(l.p
         if(isLast){
           s.addShape(pres.ShapeType.rect,{x:0,y:0,w:10,h:5.63,fill:{color:"070C1A"},line:{color:"070C1A",width:0}});
           // large ambient glow
-          s.addShape(pres.ShapeType.ellipse,{x:2.0,y:-0.5,w:6,h:6,fill:{color:C.blue},line:{color:C.blue,width:0}});
-          s.addShape(pres.ShapeType.ellipse,{x:3.2,y:0.8,w:3.6,h:3.6,fill:{color:C.blue},line:{color:C.blue,width:1}});
-          s.addShape(pres.ShapeType.ellipse,{x:3.8,y:1.5,w:2.4,h:2.4,fill:{color:C.indigo},line:{color:C.indigo,width:1}});
+          s.addShape(pres.ShapeType.ellipse,{x:2.0,y:-0.5,w:6,h:6,fill:{color:C.blue+"0E"},line:{color:C.blue+"00",width:0}});
+          s.addShape(pres.ShapeType.ellipse,{x:3.2,y:0.8,w:3.6,h:3.6,fill:{color:C.blue+"14"},line:{color:C.blue+"28",width:1}});
+          s.addShape(pres.ShapeType.ellipse,{x:3.8,y:1.5,w:2.4,h:2.4,fill:{color:C.indigo+"12"},line:{color:C.indigo+"28",width:1}});
           // top + bottom accent bars
           s.addShape(pres.ShapeType.rect,{x:0,y:0,w:10,h:0.07,fill:{color:C.blue},line:{color:C.blue,width:0}});
           s.addShape(pres.ShapeType.rect,{x:0,y:5.56,w:10,h:0.07,fill:{color:C.blue},line:{color:C.blue,width:0}});
-          s.addShape(pres.ShapeType.rect,{x:0,y:5.56,w:10,h:0.07,fill:{color:C.indigo},line:{color:C.indigo,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:0,y:5.56,w:10,h:0.07,fill:{color:C.indigo+"88"},line:{color:C.indigo+"88",width:0}});
           // main text
           s.addText(slide.title||"Thank You",{x:0.5,y:1.3,w:9,h:1.2,fontSize:46,bold:true,color:C.ink,fontFace:F,align:"center",charSpacing:-1.5});
           // elegant thin rule with diamond
-          s.addShape(pres.ShapeType.rect,{x:1.5,y:2.72,w:2.8,h:0.035,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:1.5,y:2.72,w:2.8,h:0.035,fill:{color:C.blue+"70"},line:{color:C.blue+"70",width:0}});
           s.addShape(pres.ShapeType.ellipse,{x:4.945,y:2.706,w:0.11,h:0.065,fill:{color:C.blue},line:{color:C.blue,width:0}});
-          s.addShape(pres.ShapeType.rect,{x:5.7,y:2.72,w:2.8,h:0.035,fill:{color:C.blue},line:{color:C.blue,width:0}});
+          s.addShape(pres.ShapeType.rect,{x:5.7,y:2.72,w:2.8,h:0.035,fill:{color:C.blue+"70"},line:{color:C.blue+"70",width:0}});
           // subtitle / tagline
           if(slide.subtitle) s.addText(slide.subtitle,{x:1,y:2.88,w:8,h:0.42,fontSize:12,color:C.muted,fontFace:F,align:"center",italic:true});
           // company footer
@@ -20365,6 +20372,7 @@ RULES:
           "Content-Type":"application/json",
           "anthropic-version":"2023-06-01",
           "anthropic-dangerous-direct-browser-access":"true",
+          "x-api-key": ANTHROPIC_API_KEY,
         },
         body:JSON.stringify({
           model:"claude-sonnet-4-5",
