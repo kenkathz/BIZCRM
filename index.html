@@ -100,20 +100,15 @@ const {
    FIREBASE CONFIG - replace these values with your own project config
    from Firebase Console > Project Settings > Your apps > SDK setup
 ----------------------------------------------------------------------- */
-const firebaseConfig = {
+const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDG4T5RMB9dDGqyRZuqz7L_W_p9rsDDvkc",
   authDomain: "bizcrm-44258.firebaseapp.com",
   databaseURL: "https://bizcrm-44258-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "bizcrm-44258",
   storageBucket: "bizcrm-44258.firebasestorage.app",
   messagingSenderId: "99400245451",
-  appId: "1:99400245451:web:c7fdbb79f7f2a82192fb4e",
-  measurementId: "G-PDF6ZBQGBH"
+  appId: "1:99400245451:web:c7fdbb79f7f2a82192fb4e"
 };
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 
 /* Firebase init - only runs once */
 let _db = null;
