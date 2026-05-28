@@ -23,9 +23,6 @@ input[type="time"]::-webkit-calendar-picker-indicator{
 ::-webkit-scrollbar-track{background:#0d1117}
 ::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
 
-/* ── api key modal ── */
-.apikey-overlay{position:fixed;inset:0;background:#000000bb;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
-.apikey-box{background:#0d1117;border:1px solid #30363d;border-radius:16px;padding:28px 28px 24px;max-width:440px;width:100%;box-shadow:0 20px 60px #00000099}
 /* ── layout ── */
 .app{display:flex;height:100vh;width:100%;overflow:hidden;position:relative}
 .sidebar{
@@ -5430,64 +5427,6 @@ function SalesTargetWidget({
     }, "\u20B1", wonPipe.toLocaleString()))));
   })));
 }
-/* ── Shared API Key Store ── */
-window._bizApiKey = window._bizApiKey || "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";
-window._bizApiKeyListeners = window._bizApiKeyListeners || [];
-window._setBizApiKey = (k) => {
-  window._bizApiKey = k;
-  window._bizApiKeyListeners.forEach(fn => fn(k));
-};
-function useApiKey() {
-  const [key, setKey] = useState(window._bizApiKey);
-  useEffect(() => {
-    const handler = (k) => setKey(k);
-    window._bizApiKeyListeners.push(handler);
-    return () => { window._bizApiKeyListeners = window._bizApiKeyListeners.filter(f => f !== handler); };
-  }, []);
-  return [key, window._setBizApiKey];
-}
-function ApiKeyModal({ onDone }) {
-  const [val, setVal] = useState("");
-  const [show, setShow] = useState(false);
-  const save = () => { if (val.trim()) { window._setBizApiKey(val.trim()); onDone && onDone(); } };
-  return React.createElement("div", { className: "apikey-overlay" },
-    React.createElement("div", { className: "apikey-box" },
-      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 16 } },
-        React.createElement("div", { style: { width: 36, height: 36, borderRadius: 9, background: "linear-gradient(135deg,#1f6feb,#a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 } }, "🔑"),
-        React.createElement("div", null,
-          React.createElement("div", { style: { fontSize: 15, fontWeight: 700, color: "#f0f6fc" } }, "Anthropic API Key Required"),
-          React.createElement("div", { style: { fontSize: 11, color: "#8b949e", marginTop: 2 } }, "Required to use AI features in BizCRM")
-        )
-      ),
-      React.createElement("div", { style: { fontSize: 12, color: "#c9d1d9", marginBottom: 14, lineHeight: 1.6 } },
-        "Enter your Anthropic API key to enable AI Business Insights and the AI Analyst. Your key is stored only in this browser session and never sent anywhere except directly to ", React.createElement("strong", { style: { color: "#60a5fa" } }, "api.anthropic.com"), "."
-      ),
-      React.createElement("div", { style: { position: "relative", marginBottom: 10 } },
-        React.createElement("input", {
-          type: show ? "text" : "password",
-          value: val,
-          onChange: e => setVal(e.target.value),
-          onKeyDown: e => e.key === "Enter" && save(),
-          placeholder: "sk-ant-...",
-          style: { width: "100%", background: "#161b22", border: "1px solid #30363d", borderRadius: 8, padding: "10px 44px 10px 12px", color: "#f0f6fc", fontSize: 13, outline: "none", fontFamily: "monospace" }
-        }),
-        React.createElement("button", {
-          onClick: () => setShow(s => !s),
-          style: { position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#8b949e", cursor: "pointer", fontSize: 15, padding: 2 }
-        }, show ? "🙈" : "👁")
-      ),
-      React.createElement("div", { style: { fontSize: 10, color: "#8b949e", marginBottom: 16 } },
-        "Get your key at ", React.createElement("a", { href: "https://console.anthropic.com/keys", target: "_blank", style: { color: "#60a5fa" } }, "console.anthropic.com/keys")
-      ),
-      React.createElement("button", {
-        onClick: save,
-        disabled: !val.trim(),
-        style: { width: "100%", background: val.trim() ? "linear-gradient(135deg,#1f6feb,#a78bfa)" : "#21262d", border: "none", color: val.trim() ? "#fff" : "#4b5563", borderRadius: 8, padding: "11px", fontSize: 13, fontWeight: 700, cursor: val.trim() ? "pointer" : "default", transition: "background .15s" }
-      }, "Save & Continue")
-    )
-  );
-}
-
 function AIInsights({
   leads,
   clients,
@@ -5500,8 +5439,6 @@ function AIInsights({
   totRev,
   totOutstanding
 }) {
-  const [apiKey, setApiKey] = useApiKey();
-  const [showKeyModal, setShowKeyModal] = useState(false);
   const [insight, setInsight] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
@@ -5551,7 +5488,6 @@ Respond ONLY with this JSON (no markdown fences, no extra text):
           "Content-Type": "application/json",
           "anthropic-version": "2023-06-01",
           "anthropic-dangerous-direct-browser-access": "true",
-          "x-api-key": window._bizApiKey,
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
@@ -5563,16 +5499,6 @@ Respond ONLY with this JSON (no markdown fences, no extra text):
         })
       });
       const data = await res.json();
-      if (data.error) {
-        if (data.error.type === "authentication_error" || res.status === 401) {
-          window._setBizApiKey("");
-          setErr("Invalid API key. Please re-enter your Anthropic API key.");
-          setShowKeyModal(true);
-          setLoading(false);
-          return;
-        }
-        throw new Error(data.error.message);
-      }
       const text = (data.content || []).map(b => b.text || "").join("");
       const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
       setInsight(parsed);
@@ -5581,9 +5507,7 @@ Respond ONLY with this JSON (no markdown fences, no extra text):
     }
     setLoading(false);
   };
-  return /*#__PURE__*/React.createElement(React.Fragment, null,
-    showKeyModal && React.createElement(ApiKeyModal, { onDone: () => { setShowKeyModal(false); generateInsight(); } }),
-    /*#__PURE__*/React.createElement(Card, {
+  return /*#__PURE__*/React.createElement(Card, {
     style: {
       marginBottom: 14
     }
@@ -5785,7 +5709,7 @@ Respond ONLY with this JSON (no markdown fences, no extra text):
     style: {
       color: "#c9d1d9"
     }
-  }, "Generate Insights"), " to get AI-powered analysis of your business performance."), /*#__PURE__*/React.createElement("style", null, `@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`)));
+  }, "Generate Insights"), " to get AI-powered analysis of your business performance."), /*#__PURE__*/React.createElement("style", null, `@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`));
 }
 function Dashboard({
   clients,
@@ -19842,7 +19766,6 @@ setTimeout(() => {
 function AIChatPanel({leads,clients,products,quotations,activities}) {
   const {useState,useRef,useEffect}=React;
   const [open,setOpen]=useState(false);
-  const [showKeyModal,setShowKeyModal]=useState(false);
   const [msgs,setMsgs]=useState([{role:"assistant",content:"Hi! I'm your CRM AI analyst. Ask me to **generate a report** or **create a presentation** — I'll analyze all your data across Leads, Clients, Products, Quotations, and Financials.\n\nTry: *\"Generate a full business report as a presentation\"*"}]);
   const [input,setInput]=useState("");
   const [loading,setLoading]=useState(false);
@@ -20280,7 +20203,6 @@ RULES:
           "Content-Type":"application/json",
           "anthropic-version":"2023-06-01",
           "anthropic-dangerous-direct-browser-access":"true",
-          "x-api-key":window._bizApiKey,
         },
         body:JSON.stringify({
           model:"claude-sonnet-4-20250514",
@@ -20290,13 +20212,6 @@ RULES:
         })
       });
       const data=await resp.json();
-      if(data.error&&(data.error.type==="authentication_error"||resp.status===401)){
-        window._setBizApiKey("");
-        setMsgs(p=>[...p,{role:"assistant",content:"⚠️ Invalid API key. Please re-enter your Anthropic API key."}]);
-        setShowKeyModal(true);
-        setLoading(false);
-        return;
-      }
       const raw=data.content?.[0]?.text||"Sorry, I couldn't generate a response.";
 
       if(wantsPPTX){
@@ -20323,8 +20238,6 @@ RULES:
   const fmt=txt=>txt.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\*(.*?)\*/g,"<em>$1</em>").replace(/\n/g,"<br/>");
 
   return React.createElement(React.Fragment,null,
-    // API Key Modal
-    showKeyModal&&React.createElement(ApiKeyModal,{onDone:()=>setShowKeyModal(false)}),
     // FAB button
     React.createElement("button",{
       onClick:()=>setOpen(o=>!o),
