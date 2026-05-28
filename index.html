@@ -114,8 +114,7 @@ const FIREBASE_CONFIG = {
    ANTHROPIC API KEY - paste your key from console.anthropic.com/keys
    Format: sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ----------------------------------------------------------------------- */
-const ANTHROPIC_API_KEY = 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
-
+const ANTHROPIC_API_KEY = "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";
 
 /* Firebase init - only runs once */
 let _db = null;
@@ -183,7 +182,7 @@ function useFirebaseCollection(path, defaultValue, seedData) {
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (_fbReady && _db) {
         const obj = {};
-        next.forEach(function(item) { obj[item.id] = item; });
+        next.forEach(function(item) { obj[item.id] = JSON.parse(JSON.stringify(item, function(k,v){ return v === undefined ? null : v; })); });
         _db.ref(path).set(obj).catch(function(e) {
           console.warn("Firebase write error on", path, e.message);
         });
@@ -10292,7 +10291,7 @@ function LeadForm({
       stageStatus: f.stageStatus || {},
       activityLog: f.activityLog || [],
       engagements: f.engagements || {},
-      engagementItems: f.engagementItems || undefined
+      engagementItems: f.engagementItems || null
     };
     setSavedId(id);
     onSave(saved);
@@ -13130,7 +13129,7 @@ function LeadsPage({
         discountType: lead.discountType,
         discountValue: lead.discountValue || 0,
         engagements: lead.engagements || {},
-        engagementItems: lead.engagementItems,
+        engagementItems: lead.engagementItems || null,
         stageLogs: lead.stageLogs || {},
         activityLog: lead.activityLog || [],
         created: lead.created
