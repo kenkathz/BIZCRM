@@ -468,10 +468,18 @@ function _idParts() {
 }
 function generateLeadId(existingLeads) {
   const { mm, yy } = _idParts();
+  const suffix = `-${mm}-${yy}`;
   const thisMonthLeads = (existingLeads || []).filter(l =>
-    typeof l.id === "string" && l.id.startsWith("L-") && l.id.endsWith(`-${mm}-${yy}`)
+    typeof l.id === "string" && l.id.startsWith("L-") && l.id.endsWith(suffix)
   );
-  const seq = String(thisMonthLeads.length + 1).padStart(2, "0");
+  // Use max existing seq + 1 (not length + 1) so deletions/gaps don't cause duplicate IDs
+  let maxSeq = 0;
+  thisMonthLeads.forEach(l => {
+    const parts = l.id.split("-");
+    const n = parseInt(parts[1], 10);
+    if (!isNaN(n) && n > maxSeq) maxSeq = n;
+  });
+  const seq = String(maxSeq + 1).padStart(2, "0");
   return `L-${seq}-${mm}-${yy}`;
 }
 function leadIdToClientId(leadId) {
@@ -485,12 +493,19 @@ function generateClientId(existingClients, leadId) {
   if (leadId && typeof leadId === "string" && leadId.startsWith("L-")) {
     return leadIdToClientId(leadId);
   }
-  /* Standalone client — same seq format */
+  /* Standalone client — same seq format, max+1 to prevent collisions */
   const { mm, yy } = _idParts();
+  const suffix = `-${mm}-${yy}`;
   const thisMonthClients = (existingClients || []).filter(c =>
-    typeof c.id === "string" && c.id.startsWith("C-") && c.id.endsWith(`-${mm}-${yy}`)
+    typeof c.id === "string" && c.id.startsWith("C-") && c.id.endsWith(suffix)
   );
-  const seq = String(thisMonthClients.length + 1).padStart(2, "0");
+  let maxSeq = 0;
+  thisMonthClients.forEach(c => {
+    const parts = c.id.split("-");
+    const n = parseInt(parts[1], 10);
+    if (!isNaN(n) && n > maxSeq) maxSeq = n;
+  });
+  const seq = String(maxSeq + 1).padStart(2, "0");
   return `C-${seq}-${mm}-${yy}`;
 }
 
@@ -1507,11 +1522,11 @@ function ClientForm({
     icon: "🏢"
   }, {
     id: "status",
-    label: "Status",
+    label: "Lead Status",
     icon: "🎯"
   }, {
     id: "activities",
-    label: "Activities",
+    label: "Account Activities",
     icon: "📋"
   }, {
     id: "financials",
@@ -1521,10 +1536,6 @@ function ClientForm({
     id: "engagement",
     label: "Engagement",
     icon: "🤝"
-  }, {
-    id: "notes",
-    label: "Notes",
-    icon: "📝"
   }];
   const [justSaved, setJustSaved] = useState(false);
   const [savedId, setSavedId] = useState((init == null ? void 0 : init.id) || null);
@@ -1756,16 +1767,60 @@ function ClientForm({
     type: "email",
     set: v => s("email", v),
     ph: "contact@company.com"
-  }))))), tab === "status" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SH, {
-    t: "Client Status"
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8,
-      flexWrap: "wrap",
-      marginBottom: 20
-    }
-  }, SL.map(st => {
+  }))))), tab === "status" && /*#__PURE__*/React.createElement("div", null,
+    /*#__PURE__*/React.createElement(SH, { t: "Lead Status" }),
+    f.fromLeadData ? /*#__PURE__*/React.createElement("div", {
+      style: { background: "#0a1a2e", border: "1px solid #1d4ed855", borderRadius: 10, padding: "14px 16px", marginBottom: 20 }
+    },
+      /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#60a5fa", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", marginBottom: 10 } }, "Mirrored from Lead · " + (f.fromLeadData.leadId || f.fromLead || "")),
+      /*#__PURE__*/React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 } },
+        /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#c9d1d9", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 } }, "Lead Stage"),
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#f0f6fc" } }, f.fromLeadData.stage || "—")
+        ),
+        /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#c9d1d9", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 } }, "Lead Status"),
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#4ade80" } }, f.fromLeadData.status || "—")
+        ),
+        /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#c9d1d9", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 } }, "Lead Source"),
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#f0f6fc" } }, f.fromLeadData.leadSource || "—")
+        ),
+        /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#c9d1d9", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 } }, "Qualification"),
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#f0f6fc" } }, f.fromLeadData.leadQualification || "—")
+        ),
+        /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#c9d1d9", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 } }, "Projected Sales"),
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#fbbf24" } }, "₱" + (f.fromLeadData.projectedSales || 0).toLocaleString())
+        ),
+        /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#c9d1d9", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 } }, "Lead Created"),
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#f0f6fc" } }, f.fromLeadData.created ? fmtDate(f.fromLeadData.created) : "—")
+        )
+      ),
+      Object.keys(f.fromLeadData.stageLogs || {}).length > 0 && /*#__PURE__*/React.createElement("div", null,
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#c9d1d9", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 } }, "Stage Activity Summary"),
+        /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+          Object.entries(f.fromLeadData.stageLogs).map(([stage, logs]) =>
+            /*#__PURE__*/React.createElement("span", {
+              key: stage,
+              style: { fontSize: 11, background: "#1f6feb22", color: "#60a5fa", border: "1px solid #1f6feb44", borderRadius: 6, padding: "3px 10px" }
+            }, stage + " · " + (logs || []).length + " entr" + ((logs || []).length === 1 ? "y" : "ies"))
+          )
+        )
+      )
+    ) : /*#__PURE__*/React.createElement("div", {
+      style: { background: "#161b22", border: "1px dashed #30363d", borderRadius: 10, padding: "14px 16px", marginBottom: 20, fontSize: 12, color: "#4b5563" }
+    }, "No lead data — this client was added directly (not converted from a lead)."),
+    /*#__PURE__*/React.createElement(SH, { t: "Account Status" }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8,
+        flexWrap: "wrap",
+        marginBottom: 20
+      }
+    }, SL.map(st => {
     const sst = SS[st] || {
       bg: "#1a1a1a",
       color: "#c9d1d9",
@@ -3754,26 +3809,7 @@ function ClientForm({
       onChange: v => s("stages", v),
       editable: true
     })));
-  })(), tab === "notes" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SH, {
-    t: "Internal Notes"
-  }), /*#__PURE__*/React.createElement("textarea", {
-    value: f.notes,
-    onChange: e => s("notes", e.target.value),
-    rows: 6,
-    placeholder: "Internal notes, context, or reminders about this client\u2026",
-    style: {
-      width: "100%",
-      background: "#161b22",
-      border: "1px solid #30363d",
-      borderRadius: 8,
-      padding: "10px 12px",
-      color: "#f0f6fc",
-      fontSize: 14,
-      outline: "none",
-      resize: "vertical",
-      marginBottom: 4
-    }
-  }))), clientFormErr && /*#__PURE__*/React.createElement("div", {style:{background:"#1f0a0a",border:"1px solid #f87171",borderRadius:8,padding:"8px 16px",fontSize:12,color:"#f87171",margin:"0 20px 8px"}}, "\u26A0 ", clientFormErr), /*#__PURE__*/React.createElement("div", {
+  })(), clientFormErr && /*#__PURE__*/React.createElement("div", {style:{background:"#1f0a0a",border:"1px solid #f87171",borderRadius:8,padding:"8px 16px",fontSize:12,color:"#f87171",margin:"0 20px 8px"}}, "\u26A0 ", clientFormErr), /*#__PURE__*/React.createElement("div", {
     className: "form-footer",
     style: {
       padding: "14px 20px 28px",
@@ -3807,7 +3843,7 @@ function ClientForm({
   }, savedId ? "Close" : "Cancel"), /*#__PURE__*/React.createElement(Btn, {
     c: "suc",
     onClick: handleSave
-  }, init ? "Save Changes" : savedId ? "Save Changes" : "Add Client"))));
+  }, init ? "Save Changes" : savedId ? "Save Changes" : "Add Client")))));
 }
 function ClientDetail({
   c,
@@ -3933,7 +3969,9 @@ function ClientDetail({
       background: "#080d13",
       flexShrink: 0
     }
-  }, ["info", "activities", "engagement", "financials", "contact"].map(t => /*#__PURE__*/React.createElement("button", {
+  }, ["info", "leadstatus", "activities", "financials", "engagement"].map(t => {
+    const tabLabels = { info: "Info", leadstatus: "Lead Status", activities: "Acct Activities", financials: "Invoices", engagement: "Engagement" };
+    return /*#__PURE__*/React.createElement("button", {
     key: t,
     onClick: () => setTab(t),
     style: {
@@ -3950,9 +3988,10 @@ function ClientDetail({
       touchAction: "manipulation",
       position: "relative"
     }
-  }, t, t === "activities" && (c.activityLog || []).filter(a => !a.done).length > 0 && /*#__PURE__*/React.createElement("span", {
+  }, t === "activities" && (c.activityLog || []).filter(a => !a.done).length > 0 && /*#__PURE__*/React.createElement("span", {
     style: { position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: "50%", background: "#f87171" }
-  })))), /*#__PURE__*/React.createElement("div", {
+  }), tabLabels[t] || t);
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       padding: 18,
       flex: 1,
@@ -4059,7 +4098,36 @@ function ClientDetail({
       color: "#c9d1d9",
       lineHeight: 1.7
     }
-  }, c.notes))), tab === "activities" && /*#__PURE__*/React.createElement("div", null,
+  }, c.notes))), tab === "leadstatus" && /*#__PURE__*/React.createElement("div", null,
+    c.fromLeadData ? /*#__PURE__*/React.createElement("div", null,
+      /*#__PURE__*/React.createElement("div", { style: { background: "#0a1a2e", border: "1px solid #1d4ed855", borderRadius: 10, padding: "13px 14px", marginBottom: 12 } },
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: "#60a5fa", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 8 } }, "Lead · " + (c.fromLeadData.leadId || c.fromLead || "")),
+        /*#__PURE__*/React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+          [
+            ["Stage", c.fromLeadData.stage || "—", "#c9d1d9"],
+            ["Status", c.fromLeadData.status || "—", "#4ade80"],
+            ["Source", c.fromLeadData.leadSource || "—", "#c9d1d9"],
+            ["Qualification", c.fromLeadData.leadQualification || "—", "#c9d1d9"],
+            ["Projected", "₱" + (c.fromLeadData.projectedSales || 0).toLocaleString(), "#fbbf24"],
+            ["Created", c.fromLeadData.created ? fmtDate(c.fromLeadData.created) : "—", "#c9d1d9"],
+          ].map(([label, value, color]) => /*#__PURE__*/React.createElement("div", { key: label },
+            /*#__PURE__*/React.createElement("div", { style: { fontSize: 9, color: "#4b5563", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 2 } }, label),
+            /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color } }, value)
+          ))
+        ),
+        Object.keys(c.fromLeadData.stageLogs || {}).length > 0 && /*#__PURE__*/React.createElement("div", { style: { marginTop: 10 } },
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 9, color: "#4b5563", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 } }, "Stage Activity Summary"),
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 5 } },
+            Object.entries(c.fromLeadData.stageLogs).map(([stage, logs]) =>
+              /*#__PURE__*/React.createElement("span", { key: stage, style: { fontSize: 10, background: "#1f6feb22", color: "#60a5fa", border: "1px solid #1f6feb44", borderRadius: 6, padding: "2px 8px" } },
+                stage + " · " + (logs || []).length
+              )
+            )
+          )
+        )
+      )
+    ) : /*#__PURE__*/React.createElement("div", { style: { fontSize: 12, color: "#4b5563", padding: "16px 0", textAlign: "center" } }, "No lead origin data — client was added directly."),
+  ), tab === "activities" && /*#__PURE__*/React.createElement("div", null,
     c.fromLead && (c.activityLog || []).some(a => a._fromLead) && /*#__PURE__*/React.createElement("div", {
       style: { background: "#0a1a2e", border: "1px solid #1d4ed855", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 11, color: "#60a5fa" }
     }, "📋 ", (c.activityLog || []).filter(a => a._fromLead).length, " activit", (c.activityLog || []).filter(a => a._fromLead).length !== 1 ? "ies" : "y", " carried over from lead"),
@@ -13520,12 +13588,18 @@ function LeadsPage({
       })(),
       fromLeadData: {
         stage: lead.stage,
+        status: lead.status,
+        leadSource: lead.leadSource || "",
+        leadQualification: lead.leadQualification || "",
+        stageLogs: lead.stageLogs || {},
+        stageStatus: lead.stageStatus || {},
         lineItems: lead.lineItems || [],
         products: lead.products || [],
         projectedSales: lead.projectedSales || 0,
         discountType: lead.discountType,
         discountValue: lead.discountValue || 0,
-        created: lead.created
+        created: lead.created,
+        leadId: lead.id
       },
       invoices: transferredInvoices,
       payments: transferredPayments,
@@ -13937,11 +14011,8 @@ function LeadsPage({
     }, "No leads")));
   }));
   const ListView = () => {
-    // FIX: use full leads[] so metrics are correct regardless of showWon filter or search state
-    const wonProj = leads.filter(l => l.status === "Won").reduce((s, l) => s + (l.projectedSales || 0), 0);
-    const totalProj = leads.filter(l => l.status !== "Won" && l.status !== "Churned").reduce((s, l) => s + (l.projectedSales || 0), 0);
-    const wonCount = leads.filter(l => l.status === "Won").length;
-    const winRatePct = leads.length > 0 ? Math.round(wonCount / leads.length * 100) : 0;
+    const totalProj = fL.reduce((s, l) => s + (l.projectedSales || 0), 0);
+    const wonProj = fL.filter(l => l.status === "Won").reduce((s, l) => s + (l.projectedSales || 0), 0);
     const totalLeadPages = Math.ceil(fLSorted.length / LEADS_PER_PAGE);
     const pagedLeads = fLSorted.slice((leadPage - 1) * LEADS_PER_PAGE, leadPage * LEADS_PER_PAGE);
     const leadsTableEl = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
@@ -14029,7 +14100,7 @@ function LeadsPage({
         color: "#c9d1d9",
         marginTop: 2
       }
-    }, wonCount, " won")), /*#__PURE__*/React.createElement("div", {
+    }, fL.filter(l => l.status === "Won").length, " won")), /*#__PURE__*/React.createElement("div", {
       style: {
         background: "#0d1117",
         border: "1px solid #fbbf2433",
@@ -14062,13 +14133,13 @@ function LeadsPage({
         fontWeight: 700,
         color: "#fbbf24"
       }
-    }, "\u20B1", (totalProj).toLocaleString()), /*#__PURE__*/React.createElement("div", {
+    }, "\u20B1", (totalProj - wonProj).toLocaleString()), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 10,
         color: "#c9d1d9",
         marginTop: 2
       }
-    }, leads.filter(l => l.status !== "Won" && l.status !== "Churned").length, " active")), /*#__PURE__*/React.createElement("div", {
+    }, fL.filter(l => l.status !== "Won" && l.status !== "Churned").length, " active")), /*#__PURE__*/React.createElement("div", {
       style: {
         background: "#0d1117",
         border: "1px solid #818cf833",
@@ -14101,7 +14172,7 @@ function LeadsPage({
         fontWeight: 700,
         color: "#818cf8"
       }
-    }, winRatePct, "%"), /*#__PURE__*/React.createElement("div", {
+    }, fL.length > 0 ? Math.round(fL.filter(l => l.status === "Won").length / fL.length * 100) : 0, "%"), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 10,
         color: "#c9d1d9",
